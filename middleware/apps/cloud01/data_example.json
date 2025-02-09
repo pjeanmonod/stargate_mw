@@ -1,0 +1,21 @@
+{
+ "job_vars": {
+  "added_nets": [],
+  "added_nets_out": [],
+  "client_domain": "abc123.com",
+  "clientdc_net": [],
+  "clientman_net": [
+   "1.1.1.1/27"
+  ],
+  "country_code": "us",
+  "leak_client_nets": "no",
+  "master_cluster": "no",
+  "mgmt_nets": [],
+  "pri_site": "nye",
+  "sec_site": "fpc",
+  "primary_region": "na",
+  "primary_var_prefix": "otl",
+  "vms": "no"
+ },
+ "master_ticket": "ABC-102693"
+}

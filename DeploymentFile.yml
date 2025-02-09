@@ -1,0 +1,85 @@
+---
+- name: Deploy StarGate Middleware (API) (PROD)
+  hosts: UbuntuVM
+  gather_facts: no
+  become: yes
+  become_user: bob
+
+  vars_files:
+    - ./deploymentVars.yml
+  
+  tasks:
+
+    - name: Create .ssh directory
+      file:
+        path: "{{ SSH_KEY_PATH }}"
+        state: directory
+        owner: "{{ USER }}"
+        group: "{{ GROUP }}"
+        mode: "0700"
+
+    - name: Copy the key to the remote server
+      copy:
+        src: "{{ secret_key }}"
+        dest: "{{ SSH_KEY_PATH }}/{{ SSH_KEY }}"
+        owner: "{{ USER }}"
+        group: "{{ GROUP }}"
+        mode: 0600
+
+    - name: Create staging directory for repository
+      file:
+        path: "{{ STAGING_DIR }}"
+        state: directory
+        owner: "{{ USER }}"
+        group: "{{ GROUP }}"
+        mode: "0755"
+  
+    - name: Check if .git directory exists
+      stat:
+        path: "{{ STAGING_DIR }}/.git"
+      register: git_repo
+
+    - name: Pull the repository only if it does not exist
+      git:
+        repo: "{{ REPOSITORY }}"
+        dest: "{{ STAGING_DIR }}"
+        version: "{{ BRANCH }}"
+        key_file: "{{ SSH_KEY_PATH }}/{{ SSH_KEY }}"
+        accept_hostkey: yes
+      when: git_repo.stat.exists == false
+
+    - name: Compare local and remote branches
+      git:
+        repo: "{{ REPOSITORY }}"
+        dest: "{{ STAGING_DIR }}"
+        force: true
+        update: yes
+        version: "{{ BRANCH }}"
+        key_file: "{{ SSH_KEY_PATH }}/{{ SSH_KEY }}"
+        accept_hostkey: yes
+      diff: true
+      register: git_diff
+      when: git_repo.stat.exists == true
+          
+    - name: Build the docker image
+      command:
+        cmd: "docker build -t {{APP_NAME}}:latest -f {{ STAGING_DIR }}/Dockerfile {{ STAGING_DIR }}/"
+      register: docker_build_output
+
+    - debug:
+        var: docker_build_output
+
+    - name: Start the container
+      command:
+        cmd: "docker compose -f {{ STAGING_DIR }}/docker-compose.yml up -d"
+      register: docker_compose_up_output
+
+    - debug:
+        var: docker_compose_up_output
+
+######## CLEANING #########
+
+    - name: Remove the private key used during deployment
+      file:
+        path: "{{ SSH_KEY_PATH }}"
+        state: absent

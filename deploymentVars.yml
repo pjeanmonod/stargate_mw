@@ -1,0 +1,9 @@
+---
+STAGING_DIR: '/home/ubuntu/stargate_mw/api'
+SSH_KEY_PATH: '/home/ubuntu/stargate_mw/.ssh'
+SSH_KEY: github_key
+REPOSITORY: 'git@github.com'
+BRANCH: master
+USER: 'bob'
+GROUP: 'bob'
+APP_NAME: stargate_mw

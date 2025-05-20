@@ -4,18 +4,14 @@ import datetime
 
 class AWX:
     def __init__(self):
-        self.url = 'http://10.1.100.90:2222/api/v2/'
-        self.user = 'bob'
+        self.url = 'https://ec2-51-21-129-182.eu-north-1.compute.amazonaws.com/api/v2/'
+        self.user = 'admin'
         self.password = 'bob'
         self.session = requests.Session()
         self.session.auth = (self.user, self.password)
         self.session.verify = False
 
-    def launch_build(self, net_vars, test_gui):
+    def launch_build(self, net_vars):
         # for testing sending data to test workflow
-        if test_gui:
-            workflow = 11
-        else:
-            workflow = 10
-        URL_FULL = self.url + f"workflow_job_templates/{workflow}/launch/"
+        URL_FULL = self.url + f"job_templates/8/launch/"
         return self.session.post(url=URL_FULL, json=net_vars, verify=False)

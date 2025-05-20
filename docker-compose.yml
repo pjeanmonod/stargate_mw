@@ -15,7 +15,7 @@ x-service-volumes:
 
 services:
   website:
-    image: middleware:latest
+    image: stargate_mw:latest
     command: gunicorn -b 0.0.0.0:8000 --workers 16 --max-requests 1000 middleware.wsgi
     volumes: *service-volumes
     depends_on:
@@ -27,7 +27,7 @@ services:
       - stargate_mw
 
   db_migrate:
-    image: middleware:latest
+    image: stargate_mw:latest
     command: python manage.py migrate
     volumes: *service-volumes
 

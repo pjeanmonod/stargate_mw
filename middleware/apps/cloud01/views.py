@@ -7,6 +7,7 @@ from .serializers import *
 from pprint import pprint
 from .awx import AWX
 import traceback
+from .input_handler import format_awx_request
 
 
 class configure(APIView):
@@ -18,11 +19,13 @@ class configure(APIView):
             # extract data from incoming request
             data = self.request.data
             pprint(data, indent=3)
+            job_vars = format_awx_request(data)
 
             # Format request data for sending to Ansible AWX
-            job_vars = (data)
+            # job_vars = (data)
             awx_request = {"extra_vars": job_vars}
             pprint(awx_request)
+
 
             # Post data to Ansible AWX
             awx = AWX()

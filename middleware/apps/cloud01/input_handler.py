@@ -5,7 +5,7 @@ def format_awx_request(build_request):
     pprint (build_request)
 
     job_vars = {
-        "vpcName": build_request.get("vpcName"),
+        "EdgePriCIDR": build_request.get("EdgePriCIDR"),
         "ipv4CIDR": build_request.get("ipv4CIDR"),
         "region": build_request.get("region"),
         "tags": build_request.get("tags"),   

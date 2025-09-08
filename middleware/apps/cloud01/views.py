@@ -30,7 +30,7 @@ class configure(APIView):
             # Post data to Ansible AWX
             awx = AWX()
             request = awx.launch_build(awx_request)
-            pprint(request)
+            
 
             return Response({'success': 'build successfully raised!'}, status=200)
         except Exception as e:

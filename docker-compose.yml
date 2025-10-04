@@ -25,6 +25,8 @@ services:
     container_name: middleware
     networks:
       - stargate_mw
+    env_file:
+      - .env 
 
   db_migrate:
     image: stargate_mw:latest

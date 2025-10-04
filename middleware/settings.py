@@ -16,11 +16,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-p^m559=-f!&h*tjb_wc6mfop8)3aetvjow%-&fl1dk#&cvs9vk'
+
+# SECURITY WARNING: so secret you cant see it
+ORCHESTRATOR_API_KEY = os.getenv("ORCHESTRATOR_API_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

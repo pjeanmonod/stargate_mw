@@ -5,19 +5,19 @@ def format_awx_request(build_request):
     pprint (build_request)
 
     job_vars = {
-        "CorePriCIDR": build_request.get("CorePriCIDR"),
-        "CoreSecCIDR": build_request.get("CoreSecCIDR"),
-        "CoreprivateSubnetsPerAZ": build_request.get("CoreprivateSubnetsPerAZ"),
-        "CorepublicSubnetsPerAZ": build_request.get("CorepublicSubnetsPerAZ"),
-        "coreIgw": build_request.get("coreIgw"),
-        "EdgePriCIDR": build_request.get("EdgePriCIDR"),
-        "EdgeSecCIDR": build_request.get("EdgeSecCIDR"),
-        "EdgeprivateSubnetsPerAZ": build_request.get("EdgeprivateSubnetsPerAZ"),
-        "EdgepublicSubnetsPerAZ": build_request.get("EdgepublicSubnetsPerAZ"),
-        "edgeIgw" : build_request.get("edgeIgw"),
-        "azsperVPC": build_request.get("azsperVPC"),
         "region": build_request.get("region"),
-        "tags": build_request.get("tags"),   
+        "CorePriCIDR": [str(build_request.get("CorePriCIDR"))],
+        "CoreSecCIDR": [str(build_request.get("CoreSecCIDR"))],
+        "CorepublicSubnetsPerAZ": int(build_request.get("CorepublicSubnetsPerAZ", 1)),
+        "CoreprivateSubnetsPerAZ": int(build_request.get("CoreprivateSubnetsPerAZ", 1)),
+        "coreIgw": bool(build_request.get("coreIgw", False)),
+        "EdgePriCIDR": [str(build_request.get("EdgePriCIDR"))],
+        "EdgeSecCIDR": [str(build_request.get("EdgeSecCIDR"))],
+        "EdgepublicSubnetsPerAZ": int(build_request.get("EdgepublicSubnetsPerAZ", 1)),
+        "EdgeprivateSubnetsPerAZ": int(build_request.get("EdgeprivateSubnetsPerAZ", 1)),
+        "edgeIgw": bool(build_request.get("edgeIgw", False)),
+        "azsperVPC": int(build_request.get("azsperVPC", 2)),
+        "tags": build_request.get("tags", [])
     }
 
     extra_vars = {

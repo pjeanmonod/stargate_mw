@@ -4,7 +4,7 @@ import datetime
 
 class AWX:
     def __init__(self):
-        self.url = 'https://ec2-51-20-95-48.eu-north-1.compute.amazonaws.com/api/v2'
+        self.url = 'https://ec2-13-61-132-117.eu-north-1.compute.amazonaws.com/api/v2/'
         self.user = 'admin'
         self.password = 'bob'
         self.session = requests.Session()

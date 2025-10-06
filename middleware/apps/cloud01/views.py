@@ -14,16 +14,9 @@ from .serializers import CustomTokenObtainPairSerializer
 from .models import InfraOutput
 from .serializers import InfraOutputSerializer
 
-class InfraOutputViewSet(viewsets.ReadOnlyModelViewSet):
+class InfraOutputViewSet(viewsets.ModelViewSet):
     queryset = InfraOutput.objects.all()
     serializer_class = InfraOutputSerializer
-
-class InfraOutputCreate(APIView):
-    def post(self, request, *args, **kwargs):
-        serializer = InfraOutputSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=201)
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer

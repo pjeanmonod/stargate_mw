@@ -11,6 +11,12 @@ from .input_handler import format_awx_request
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
+from .models import InfraOutput
+from .serializers import InfraOutputSerializer
+
+class InfraOutputViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = InfraOutput.objects.all()
+    serializer_class = InfraOutputSerializer
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer

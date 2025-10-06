@@ -19,5 +19,7 @@ from django.urls import path, include
 urlpatterns = [
 
     path('api/cloud01/', include('middleware.apps.cloud01.urls')),
+    path("api/", include("infrastructure.urls")),
+]
    
 ]

@@ -152,6 +152,7 @@ CORS_ALLOW_METHODS = [
     'GET',
     'POSTS',
     'OPTIONS',
+    'DELETE',
 ]
 
 CORS_ORIGIN_WHITELIST = (

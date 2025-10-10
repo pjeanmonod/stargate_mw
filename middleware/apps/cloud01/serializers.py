@@ -6,7 +6,7 @@ from .models import InfraOutput
 class InfraOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = InfraOutput
-        fields = ["key", "value", "updated_at"]
+        fields = ["key", "id", "value", "updated_at"]
 
 class BuildRequestSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:

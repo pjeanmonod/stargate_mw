@@ -95,11 +95,23 @@ def get_terraform_plan(request, job_id):
         if response.status_code == 404 or not response.text.strip():
             return Response({"status": "pending"}, status=202)
 
+        stdout = response.text
+
+        # Extract plan between markers
+        import re
+        match = re.search(r"===BEGIN_TERRAFORM_PLAN===(.*?)===END_TERRAFORM_PLAN===", stdout, re.DOTALL)
+        if not match:
+            # Still running or not yet printed
+            return Response({"status": "pending"}, status=202)
+
+        plan_text = match.group(1).strip()
+
         return Response({
             "status": "ready",
             "job_id": job_id,
-            "plan": response.text
+            "plan": plan_text
         })
+
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 

@@ -57,3 +57,6 @@ class configure(APIView):
         except Exception as e:
             print(e)
             return Response({'error': 'Error encountered when submitting request.', 'stacktrace': str(traceback.format_exc())}, status=500)
+        
+
+

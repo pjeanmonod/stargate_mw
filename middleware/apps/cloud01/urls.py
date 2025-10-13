@@ -14,5 +14,7 @@ urlpatterns = [
     path('configure', views.configure.as_view()),
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path("terraform/plan/<int:job_id>/", views.get_terraform_plan, name="terraform-plan"),
+    path("terraform/approve/<int:job_id>/", views.approve_terraform_plan, name="terraform-approve"),
 ]
 

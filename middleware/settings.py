@@ -157,7 +157,7 @@ CORS_ALLOW_METHODS = [
 
 CORS_ORIGIN_WHITELIST = (
         'http://localhost:3000',  # for localhost (REACT Default)
-        'http://:172.31.2.0:3000',  # for network 
+        'http://172.31.2.0:3000',  # for network 
     )  
 
 CORS_ORIGIN_ALLOW_ALL = True

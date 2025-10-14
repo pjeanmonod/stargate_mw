@@ -173,59 +173,6 @@ class TerraformPlanViewSet(viewsets.ViewSet):
         # --- Fallback if job failed or still running ---
         return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
 
-
-        # --- Extract Terraform plan ---
-        extracted = None
-        begin_marker = "===BEGIN_TERRAFORM_PLAN==="
-        end_marker = "===END_TERRAFORM_PLAN==="
-        start = stdout.find(begin_marker)
-        end = stdout.find(end_marker)
-
-        if start != -1 and end != -1 and end > start:
-            extracted = stdout[start + len(begin_marker):end].strip()
-            logger.info("Found plan markers for job %s. Extracted length: %d", pk, len(extracted))
-        else:
-            # fallback regex strategies
-            terraform_intro_re = re.compile(
-                r"(Terraform used the selected providers[\s\S]+?)(?:Changes to Outputs:|Plan:|\Z)",
-                re.IGNORECASE,
-            )
-            m = terraform_intro_re.search(stdout)
-            if m:
-                extracted = m.group(0).strip()
-                logger.info("Found Terraform provider block for job %s", pk)
-            else:
-                plan_re = re.compile(r"(Plan:.*?$[\s\S]*)", re.MULTILINE)
-                m2 = plan_re.search(stdout)
-                if m2:
-                    start_idx = max(0, m2.start() - 2000)
-                    extracted = stdout[start_idx:].strip()
-                    logger.info("Found 'Plan:' section for job %s", pk)
-
-        # --- Save extracted plan if found ---
-        if extracted:
-            try:
-                plan.plan_text = extracted
-                if hasattr(plan, "status"):
-                    plan.status = "completed"
-                plan.save()
-                logger.info("Saved Terraform plan for job %s to DB (id=%s)", pk, plan.id)
-                return Response({"status": "completed", "plan_text": plan.plan_text}, status=status.HTTP_200_OK)
-            except Exception as e:
-                logger.exception("Failed to save extracted plan for job %s: %s", pk, e)
-                return Response({"error": "failed to save plan"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # --- Handle failed or still-running jobs ---
-        if job_status and str(job_status).lower() in ("failed", "error"):
-            plan.plan_text = stdout[:100000]
-            if hasattr(plan, "status"):
-                plan.status = "failed"
-            plan.save()
-            logger.info("Job %s failed; saved stdout for debugging", pk)
-            return Response({"status": "failed", "plan_text": plan.plan_text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
-
 # ------------------------ #
 #  Approve Terraform Plan  #
 # ------------------------ #

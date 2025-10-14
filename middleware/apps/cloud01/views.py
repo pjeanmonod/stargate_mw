@@ -94,7 +94,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         logger.info("Polling Terraform plan for job %s (request by %s)", pk, request.user)
 
-        # --- Ensure DB row exists ---
+        # --- Ensure there is a DB row for this job_id ---
         try:
             plan, created = TerraformPlan.objects.get_or_create(job_id=pk)
             if created:
@@ -103,15 +103,15 @@ class TerraformPlanViewSet(viewsets.ViewSet):
             logger.exception("DB error getting/creating TerraformPlan for job %s: %s", pk, e)
             return Response({"error": "DB error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # --- Return immediately if plan already exists ---
+        # --- If already completed, return immediately ---
         if plan.plan_text:
             logger.info("Plan already present in DB for job %s (id=%s), returning", pk, plan.id)
             return Response({"status": "completed", "plan_text": plan.plan_text}, status=status.HTTP_200_OK)
 
         awx = AWX()
         stdout = ""
-        actual_job_id = pk
         job_status = None
+        actual_job_id = pk
 
         # --- Fetch job metadata ---
         try:
@@ -120,20 +120,18 @@ class TerraformPlanViewSet(viewsets.ViewSet):
             logger.exception("Error fetching job metadata for job %s: %s", pk, e)
             return Response({"status": "pending", "detail": "error fetching job metadata"}, status=status.HTTP_202_ACCEPTED)
 
-        # --- Handle workflow jobs: find Stage/terraform child job ---
+        # --- If workflow job, find the Stage child job ---
         if job_meta.get("type") == "workflow_job":
-            terraform_node = None
-            STAGE_NODE_TEMPLATE_ID = 767
-
             try:
-                # 1️⃣ Lookup by static template node ID
+                STAGE_NODE_TEMPLATE_ID = 767  # static Stage node ID
                 nodes_url = f"{awx.url}/api/v2/workflow_jobs/{pk}/workflow_nodes/?workflow_job_template_node={STAGE_NODE_TEMPLATE_ID}"
-                logger.info("Attempting Stage node lookup by template ID %s for workflow %s", STAGE_NODE_TEMPLATE_ID, pk)
+                logger.info("Looking up Stage node by template ID %s for workflow %s", STAGE_NODE_TEMPLATE_ID, pk)
 
                 resp = awx.session.get(nodes_url, auth=awx.auth, verify=False)
                 resp.raise_for_status()
                 results = resp.json().get("results", [])
 
+                terraform_node = None
                 if results:
                     node = results[0]
                     job = node.get("summary_fields", {}).get("job")
@@ -141,49 +139,29 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                         terraform_node = job
                         logger.info("Found Stage child job %s via template node %s", job["id"], STAGE_NODE_TEMPLATE_ID)
 
-                # 2️⃣ Fallback: search by name if template ID lookup failed
-                if not terraform_node:
-                    logger.warning("Direct Stage node lookup failed — falling back to name search")
-                    nodes_url = f"{awx.url}/api/v2/workflow_jobs/{pk}/workflow_nodes/"
-                    nodes_resp = awx.session.get(nodes_url, auth=awx.auth, verify=False)
-                    nodes_resp.raise_for_status()
-                    nodes = nodes_resp.json().get("results", [])
-
-                    for node in nodes:
-                        node_job = node.get("summary_fields", {}).get("job")
-                        if node_job and any(k in node_job.get("name", "").lower() for k in ["stage", "terraform"]):
-                            terraform_node = node_job
-                            logger.info("Found Stage child job %s via name search", node_job["id"])
-                            break
-
-                # 3️⃣ Finalize which job to fetch stdout from
                 if terraform_node:
                     actual_job_id = terraform_node["id"]
-                    job_status = terraform_node.get("status")
-                    logger.info("Resolved actual Terraform/Stage job ID %s for workflow %s", actual_job_id, pk)
+                    logger.info("Using Stage job ID %s instead of workflow ID %s", actual_job_id, pk)
                 else:
-                    logger.warning("No Stage/Terraform node found for workflow job %s; using workflow stdout fallback", pk)
-                    job_status = job_meta.get("status")
+                    logger.warning("No Stage node found for workflow %s; falling back to workflow stdout", pk)
 
             except Exception as e:
                 logger.exception("Error traversing workflow nodes for job %s: %s", pk, e)
-                job_status = job_meta.get("status")
-
-        else:
-            # Not a workflow job — pull job_status directly
-            job_status = job_meta.get("status")
 
         # --- Fetch stdout from actual job ---
         try:
             stdout_response = awx.get_terraform_plan(actual_job_id)
-            if isinstance(stdout_response, dict):
-                stdout = stdout_response.get("msg", "")
-            else:
-                stdout = getattr(stdout_response, "text", "") or ""
-            logger.info("AWX stdout first 500 chars for job %s:\n%s", actual_job_id, stdout[:500].replace("\n", "\\n"))
         except Exception as e:
             logger.exception("Error fetching stdout for job %s: %s", actual_job_id, e)
             return Response({"status": "pending", "detail": "error fetching job stdout"}, status=status.HTTP_202_ACCEPTED)
+
+        # --- Extract stdout text ---
+        if isinstance(stdout_response, dict):
+            stdout = stdout_response.get("msg", "")
+        else:
+            stdout = getattr(stdout_response, "text", "") or ""
+
+        logger.info("AWX stdout first 500 chars for job %s:\n%s", actual_job_id, stdout[:500].replace("\n", "\\n"))
 
         # --- Extract Terraform plan ---
         extracted = None
@@ -194,20 +172,26 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 
         if start != -1 and end != -1 and end > start:
             extracted = stdout[start + len(begin_marker):end].strip()
+            logger.info("Found plan markers for job %s. Extracted length: %d", pk, len(extracted))
         else:
             # fallback regex strategies
-            terraform_intro_re = re.compile(r"(Terraform used the selected providers[\s\S]+?)(?:Changes to Outputs:|Plan:|\Z)", re.IGNORECASE)
+            terraform_intro_re = re.compile(
+                r"(Terraform used the selected providers[\s\S]+?)(?:Changes to Outputs:|Plan:|\Z)",
+                re.IGNORECASE,
+            )
             m = terraform_intro_re.search(stdout)
             if m:
                 extracted = m.group(0).strip()
+                logger.info("Found Terraform provider block for job %s", pk)
             else:
                 plan_re = re.compile(r"(Plan:.*?$[\s\S]*)", re.MULTILINE)
                 m2 = plan_re.search(stdout)
                 if m2:
                     start_idx = max(0, m2.start() - 2000)
                     extracted = stdout[start_idx:].strip()
+                    logger.info("Found 'Plan:' section for job %s", pk)
 
-        # --- Save plan if extracted ---
+        # --- Save extracted plan if found ---
         if extracted:
             try:
                 plan.plan_text = extracted
@@ -220,7 +204,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                 logger.exception("Failed to save extracted plan for job %s: %s", pk, e)
                 return Response({"error": "failed to save plan"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # --- Handle failed or running jobs ---
+        # --- Handle failed or still-running jobs ---
         if job_status and str(job_status).lower() in ("failed", "error"):
             plan.plan_text = stdout[:100000]
             if hasattr(plan, "status"):

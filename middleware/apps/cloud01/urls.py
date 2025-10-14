@@ -2,7 +2,7 @@ from django.urls import include, path
 from . import views
 from rest_framework import routers
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import CustomTokenObtainPairView, InfraOutputViewSet
+from .views import CustomTokenObtainPairView, InfraOutputViewSet, TerraformPlanViewSet
 
 router = routers.DefaultRouter()
 # router.register(r'buildrequest', views.BuildRequestViewSet, basename='BuildRequest')

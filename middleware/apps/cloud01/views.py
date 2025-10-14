@@ -119,50 +119,50 @@ class TerraformPlanViewSet(viewsets.ViewSet):
             logger.exception("Error fetching job metadata for job %s: %s", pk, e)
             return Response({"status": "pending", "detail": "error fetching job metadata"}, status=status.HTTP_202_ACCEPTED)
 
-        # --- Determine which job actually ran Terraform ---
+             # --- Determine which job actually has stdout with Terraform plan in it ---
         actual_job_id = pk
+
         if job_meta.get("type") == "workflow_job":
             try:
-                # Option 1: Check summary_fields
-                nodes = job_meta.get("summary_fields", {}).get("workflow_nodes", [])
+                terraform_node = None
 
-                # Option 2: Fallback to API if needed
+                # Try summary_fields first
+                nodes = job_meta.get("summary_fields", {}).get("workflow_nodes") or []
+
+                # If not present, call AWX API directly to list workflow nodes
                 if not nodes:
-                    nodes_url = job_meta.get("related", {}).get("workflow_nodes")
-                    if nodes_url:
-                        nodes_response = awx.session.get(nodes_url)
-                        if nodes_response.status_code == 200:
-                            nodes = nodes_response.json().get("results", [])
+                    nodes_url = f"workflow_jobs/{pk}/workflow_nodes/"
+                    logger.info("Fetching workflow nodes from AWX: %s", nodes_url)
+                    nodes_resp = awx.session.get(awx.url + nodes_url, auth=awx.auth, verify=False)
+                    nodes_resp.raise_for_status()
+                    nodes = nodes_resp.json().get("results", [])
 
-                stage_node = None
+                logger.info("Found %d workflow nodes for workflow job %s", len(nodes), pk)
+
+                # Look for a node whose job name contains 'stage' or 'terraform'
                 for node in nodes:
-                    # Some nodes have job info under node['summary_fields']['job']
-                    node_job = (
-                        node.get("job")
-                        or node.get("summary_fields", {}).get("job")
-                        or {}
-                    )
-                    job_name = node_job.get("name", "").lower()
-                    if "stage" in job_name:
-                        stage_node = node_job
+                    node_job = node.get("summary_fields", {}).get("job")
+                    if node_job and any(keyword in node_job.get("name", "").lower() for keyword in ["stage", "terraform"]):
+                        terraform_node = node_job
                         break
 
-                if stage_node:
-                    actual_job_id = stage_node["id"]
+                if terraform_node:
+                    actual_job_id = terraform_node["id"]
                     logger.info(
-                        "Found 'Stage' child job %s for workflow job %s (name=%s)",
+                        "Found child job %s (%s) for workflow job %s",
                         actual_job_id,
+                        terraform_node["name"],
                         pk,
-                        stage_node.get("name"),
                     )
                 else:
                     logger.warning(
-                        "No 'Stage' child node found in workflow job %s; using workflow job stdout fallback",
+                        "No Stage/Terraform node found in workflow job %s; using workflow job stdout fallback",
                         pk,
                     )
 
             except Exception as e:
-                logger.exception("Error traversing workflow nodes for job %s: %s", pk, e)
+                logger.exception("Error traversing workflow nodes for workflow job %s: %s", pk, e)
+ 
 
         # --- Fetch stdout from actual job ---
         try:

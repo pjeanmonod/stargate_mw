@@ -83,17 +83,6 @@ class configure(APIView):
 # ---------------------- #
 #  Get Terraform Plan  #
 # ---------------------- #
-import logging
-import re
-
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-
-from .models import TerraformPlan
-from .awx import AWX
-
-logger = logging.getLogger(__name__)
-
 
 class TerraformPlanViewSet(viewsets.ViewSet):
     """
@@ -136,20 +125,38 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 
         logger.info("AWX job %s status: %s", pk, job_status)
 
-        # Fetch full stdout text using your AWX helper which calls /jobs/{id}/stdout/?format=txt
+            # Fetch full stdout text using your AWX helper which calls /jobs/{id}/stdout/?format=txt
         try:
             stdout_response = awx.get_terraform_plan(pk)
         except Exception as e:
             logger.exception("Error fetching stdout for job %s: %s", pk, e)
-            return Response({"status": "pending", "detail": "error fetching job stdout"}, status=status.HTTP_202_ACCEPTED)
+            return Response(
+                {"status": "pending", "detail": "error fetching job stdout"},
+                status=status.HTTP_202_ACCEPTED
+            )
 
-        if not stdout_response or getattr(stdout_response, "status_code", None) != 200:
-            code = getattr(stdout_response, "status_code", None)
-            logger.info("AWX stdout endpoint returned non-200 (%s) for job %s — still processing", code, pk)
+        # Extract stdout text depending on type of response
+        if isinstance(stdout_response, dict):
+            stdout = stdout_response.get("msg", "")
+        else:
+            stdout = getattr(stdout_response, "text", "") or ""
+
+        logger.info(
+            "AWX stdout first 500 chars for job %s:\n%s",
+            pk,
+            stdout[:500].replace("\n", "\\n")
+        )
+
+        # Check if stdout_response indicates failure / not ready
+        status_code = getattr(stdout_response, "status_code", None)
+        if not stdout_response or status_code != 200:
+            logger.info(
+                "AWX stdout endpoint returned non-200 (%s) for job %s — still processing",
+                status_code,
+                pk
+            )
             return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
 
-        stdout = stdout_response.text or ""
-        logger.info("AWX stdout first 500 chars for job %s:\n%s", pk, stdout[:500].replace("\n", "\\n"))
 
         # --- Extraction strategies ---
 

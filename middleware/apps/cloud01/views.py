@@ -127,10 +127,10 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                 STAGE_NODE_TEMPLATE_ID = 767  # static template node ID
 
                 # 1️⃣ Fetch all nodes for this workflow job
-                nodes_url = f"{awx.base_url.rstrip('/')}/workflow_jobs/{pk}/workflow_nodes/"
+                nodes_url = f"{awx.url.rstrip('/')}/workflow_jobs/{pk}/workflow_nodes/"
                 logger.info("Fetching workflow nodes for workflow job %s", pk)
 
-                resp = awx.session.get(nodes_url, auth=(awx.username, awx.password), verify=False)
+                resp = awx.session.get(nodes_url, verify=False)
                 resp.raise_for_status()
                 results = resp.json().get("results", [])
 

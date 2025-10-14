@@ -4,10 +4,11 @@ from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
+from .utils import save_terraform_plan
 import traceback
 from pprint import pprint
 
-from .models import BuildRequest, InfraOutput
+from .models import BuildRequest, InfraOutput, TerraformPlan
 from .serializers import (
     InfraOutputSerializer,
     CustomTokenObtainPairSerializer,
@@ -82,38 +83,38 @@ class configure(APIView):
 # ---------------------- #
 #  Get Terraform Plan  #
 # ---------------------- #
-@api_view(["GET"])
-def get_terraform_plan(request, job_id):
-    """
-    Fetch Terraform plan output for given AWX job.
-    """
-    try:
-        awx = AWX()
-        plan_url = f"{awx.url}jobs/{job_id}/stdout/?format=txt"
-        response = awx.session.get(plan_url, verify=False)
 
-        if response.status_code == 404 or not response.text.strip():
-            return Response({"status": "pending"}, status=202)
+class TerraformPlanViewSet(viewsets.ViewSet):
+    def retrieve(self, request, pk=None):
+        try:
+            plan = TerraformPlan.objects.get(job_id=pk)
+        except TerraformPlan.DoesNotExist:
+            return Response(
+                {"message": "Plan not ready yet."},
+                status=status.HTTP_202_ACCEPTED
+            )
 
-        stdout = response.text
+        if not plan.plan_text:
+            return Response(
+                {"message": "Plan still processing."},
+                status=status.HTTP_202_ACCEPTED
+            )
 
-        # Extract plan between markers
-        import re
-        match = re.search(r"===BEGIN_TERRAFORM_PLAN===(.*?)===END_TERRAFORM_PLAN===", stdout, re.DOTALL)
-        if not match:
-            # Still running or not yet printed
-            return Response({"status": "pending"}, status=202)
+        return Response({"plan": plan.plan_text}, status=status.HTTP_200_OK)
+    
 
-        plan_text = match.group(1).strip()
+class TerraformCallbackView(APIView):
+    def post(self, request):
+        job_id = request.data.get("job_id")
+        plan_output = request.data.get("plan_output")
 
-        return Response({
-            "status": "ready",
-            "job_id": job_id,
-            "plan": plan_text
-        })
+        if not job_id or not plan_output:
+            return Response({"error": "Missing job_id or plan_output"}, status=400)
 
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        # Save the plan in DB
+        save_terraform_plan(job_id, plan_output)
+
+        return Response({"status": "plan saved"}, status=status.HTTP_200_OK)
 
 
 

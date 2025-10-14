@@ -34,3 +34,17 @@ class AWX:
         url_full = urljoin(self.url, f"workflow_jobs/{job_id}/approve/")
         response = self.session.post(url_full)
         return response
+    
+    def get_job(self, job_id):
+        """
+        Fetch AWX job metadata by ID.
+        Returns dict parsed from JSON.
+        """
+        url_full = urljoin(self.url, f"jobs/{job_id}/")
+        try:
+            response = self.session.get(url_full)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.exception("Failed to fetch job metadata for %s: %s", job_id, e)
+            return {}

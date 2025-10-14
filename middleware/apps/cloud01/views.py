@@ -202,6 +202,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                 except Exception:
                     # if model doesn't have status field, ignore
                     pass
+                logger.info("About to save plan for job %s, length %d", pk, len(extracted))
                 plan.save()
                 logger.info("Saved terraform plan for job %s into DB (TerraformPlan id=%s)", pk, plan.id)
                 return Response({"status": "completed", "plan_text": plan.plan_text}, status=status.HTTP_200_OK)

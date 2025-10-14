@@ -112,38 +112,48 @@ class TerraformPlanViewSet(viewsets.ViewSet):
         stdout = ""
 
         try:
-            job_meta = awx.get_job(pk)
-            job_status = job_meta.get("status") if isinstance(job_meta, dict) else getattr(job_meta, "status", None)
-            logger.info("AWX job %s status: %s", pk, job_status)
-
-            # If this is a workflow job, locate the staging child job
-            if isinstance(job_meta, dict) and job_meta.get("type") == "workflow_job":
-                nodes = awx.get_workflow_nodes(pk)
-                # naive assumption: first successful child job is the staging plan
-                child_job_id = None
-                for node in nodes.get("results", []):
-                    uj = node.get("unified_job")
-                    if uj and uj.get("job_type") == "run" and "staging" in node.get("name", "").lower():
-                        child_job_id = uj.get("id")
-                        break
-                if not child_job_id:
-                    logger.info("No staging child job found for workflow job %s; still pending", pk)
-                    return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
-                logger.info("Found staging child job %s for workflow job %s", child_job_id, pk)
-                pk = child_job_id  # override pk to fetch stdout from actual job
-
-            # Fetch stdout from the actual job (child or normal job)
-            stdout_response = awx.get_terraform_plan(pk)
-            if isinstance(stdout_response, dict):
-                stdout = stdout_response.get("msg", "")
-            else:
-                stdout = getattr(stdout_response, "text", "") or ""
-
-            logger.info("AWX stdout first 500 chars for job %s:\n%s", pk, stdout[:500].replace("\n", "\\n"))
-
+            job_meta = awx.get_job(pk)  # workflow job or regular job
         except Exception as e:
-            logger.exception("Error fetching job/stdout for job %s: %s", pk, e)
-            return Response({"status": "pending", "detail": "error fetching job/stdout"}, status=status.HTTP_202_ACCEPTED)
+            logger.exception("Error fetching job metadata for job %s: %s", pk, e)
+            return Response({"status": "pending", "detail": "error fetching job metadata"}, status=status.HTTP_202_ACCEPTED)
+
+        # Determine actual job to fetch stdout from
+        actual_job_id = pk
+        if job_meta.get("type") == "workflow_job":
+            # Traverse workflow nodes to find the Terraform job
+            try:
+                # workflow_nodes may be under 'summary_fields' or directly
+                nodes = job_meta.get("summary_fields", {}).get("workflow_nodes", [])
+                terraform_node = None
+                for node in nodes:
+                    # Node may be a job or a workflow node; check 'job' key
+                    node_job = node.get("job")
+                    if node_job and "terraform" in node_job.get("name", "").lower():
+                        terraform_node = node_job
+                        break
+
+                if terraform_node:
+                    actual_job_id = terraform_node["id"]
+                    logger.info("Found Terraform child job %s for workflow job %s", actual_job_id, pk)
+                else:
+                    logger.warning("No Terraform node found in workflow job %s; using workflow job stdout fallback", pk)
+            except Exception as e:
+                logger.exception("Error traversing workflow nodes for job %s: %s", pk, e)
+
+        # --- Fetch stdout from actual job ---
+        try:
+            stdout_response = awx.get_terraform_plan(actual_job_id)
+        except Exception as e:
+            logger.exception("Error fetching stdout for job %s: %s", actual_job_id, e)
+            return Response({"status": "pending", "detail": "error fetching job stdout"}, status=status.HTTP_202_ACCEPTED)
+
+        # Extract text from response
+        if isinstance(stdout_response, dict):
+            stdout = stdout_response.get("msg", "")
+        else:
+            stdout = getattr(stdout_response, "text", "") or ""
+
+        logger.info("AWX stdout first 500 chars for job %s:\n%s", actual_job_id, stdout[:500].replace("\n", "\\n"))
 
         # --- Extraction strategies ---
         extracted = None

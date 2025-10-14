@@ -3,6 +3,9 @@ import json
 import datetime
 import requests
 from urllib.parse import urljoin
+import logging
+logger = logging.getLogger(__name__)
+
 
 class AWX:
     def __init__(self):
@@ -23,7 +26,7 @@ class AWX:
         """
         Fetch the Terraform plan output (stdout text) for a given AWX job.
         """
-        url_full = urljoin(self.url, f"jobs/{job_id}/stdout/?format=txt")
+        url_full = urljoin(self.url, f"workflow_jobs/{job_id}/stdout/?format=txt")
         response = self.session.get(url_full)
         return response
 
@@ -40,7 +43,7 @@ class AWX:
         Fetch AWX job metadata by ID.
         Returns dict parsed from JSON.
         """
-        url_full = urljoin(self.url, f"jobs/{job_id}/")
+        url_full = urljoin(self.url, f"workflow_jobs/{job_id}/")
         try:
             response = self.session.get(url_full)
             response.raise_for_status()

@@ -80,62 +80,58 @@ class configure(APIView):
 #  Get Terraform Plan  #
 # ---------------------- #
 class TerraformPlanViewSet(viewsets.ViewSet):
-    """
-    Retrieves Terraform plan status and output.
-    Polls AWX job and stores TF plan in DB once available.
-    """
-
     def retrieve(self, request, pk=None):
+        from .awx import AWX
+        from .models import TerraformPlan
+        from .utils import save_terraform_plan
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         try:
             plan = TerraformPlan.objects.get(job_id=pk)
         except TerraformPlan.DoesNotExist:
             return Response(
-                {"message": "Plan not found yet."},
+                {"message": "Plan not ready yet."},
                 status=status.HTTP_202_ACCEPTED
             )
 
-        # Poll AWX only if plan is still pending
-        if plan.status == "pending":
-            awx = AWX()
-            job = awx.get_job(plan.job_id)  # Replace with actual AWX API call
-            stdout = getattr(job, "stdout", "")
+        # If plan already exists and is completed, return it
+        if plan.plan_text:
+            return Response({"plan": plan.plan_text}, status=status.HTTP_200_OK)
 
-            if getattr(job, "status", None) == "successful":
-                # Parse TF plan from AWX stdout
-                begin_marker = "===BEGIN_TERRAFORM_PLAN==="
-                end_marker = "===END_TERRAFORM_PLAN==="
+        # Otherwise, poll AWX for it
+        awx = AWX()
+        response = awx.get_terraform_plan(pk)
 
-                start = stdout.find(begin_marker)
-                end = stdout.find(end_marker)
-
-                if start != -1 and end != -1 and end > start:
-                    plan_text = stdout[start + len(begin_marker):end].strip()
-                    plan.tfplan_text = plan_text
-                else:
-                    plan.tfplan_text = "Could not parse Terraform plan from AWX stdout."
-
-                plan.status = "completed"
-                plan.save()
-
-            elif getattr(job, "status", None) == "failed":
-                plan.status = "failed"
-                plan.tfplan_text = stdout  # save stdout for debugging
-                plan.save()
-
-        # Return current plan status
-        if plan.status == "pending":
-            return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
-        elif plan.status == "failed":
+        if response.status_code != 200:
+            logger.warning(f"AWX returned {response.status_code} for job {pk}")
             return Response(
-                {"status": "failed", "tfplan_text": plan.tfplan_text},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        else:
-            return Response(
-                {"status": "completed", "tfplan_text": plan.tfplan_text},
-                status=status.HTTP_200_OK
+                {"message": "Plan still processing."},
+                status=status.HTTP_202_ACCEPTED
             )
 
+        stdout = response.text
+        logger.info(f"Got {len(stdout)} chars of stdout from AWX for job {pk}")
+
+        begin_marker = "===BEGIN_TERRAFORM_PLAN==="
+        end_marker = "===END_TERRAFORM_PLAN==="
+
+        start = stdout.find(begin_marker)
+        end = stdout.find(end_marker)
+
+        if start != -1 and end != -1 and end > start:
+            plan_text = stdout[start + len(begin_marker):end].strip()
+            plan.plan_text = plan_text
+            plan.save()
+            logger.info(f"Terraform plan parsed and saved for job {pk}")
+            return Response({"plan": plan_text}, status=status.HTTP_200_OK)
+
+        logger.info(f"Plan markers not found for job {pk}, likely still running.")
+        return Response(
+            {"message": "Plan still processing."},
+            status=status.HTTP_202_ACCEPTED
+        )
 
 # ------------------------ #
 #  Approve Terraform Plan  #

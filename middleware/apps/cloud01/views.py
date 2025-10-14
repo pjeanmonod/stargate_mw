@@ -97,7 +97,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
         # Poll AWX only if plan is still pending
         if plan.status == "pending":
             awx = AWX()
-            job = awx.get_job(plan.awx_job_id)  # Replace with actual AWX API call
+            job = awx.get_job(plan.job_id)  # Replace with actual AWX API call
             stdout = getattr(job, "stdout", "")
 
             if getattr(job, "status", None) == "successful":

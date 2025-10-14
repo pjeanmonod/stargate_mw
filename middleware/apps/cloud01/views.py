@@ -123,37 +123,54 @@ class TerraformPlanViewSet(viewsets.ViewSet):
         # --- If workflow job, find the Stage child job ---
         if job_meta.get("type") == "workflow_job":
             try:
-                STAGE_NODE_TEMPLATE_ID = 767  # static Stage node ID
-                nodes_url = f"{awx.url}workflow_jobs/{pk}/workflow_nodes/?workflow_job_template_node={STAGE_NODE_TEMPLATE_ID}"
-                logger.info("Looking up Stage node by template ID %s for workflow %s", STAGE_NODE_TEMPLATE_ID, pk)
+                terraform_node = None
+                STAGE_NODE_TEMPLATE_ID = 767  # static template node ID
 
-                resp = awx.session.get(nodes_url, verify=False)
+                # 1️⃣ Fetch all nodes for this workflow job
+                nodes_url = f"{awx.base_url.rstrip('/')}/workflow_jobs/{pk}/workflow_nodes/"
+                logger.info("Fetching workflow nodes for workflow job %s", pk)
+
+                resp = awx.session.get(nodes_url, auth=(awx.username, awx.password), verify=False)
                 resp.raise_for_status()
                 results = resp.json().get("results", [])
 
-                terraform_node = None
-                if results:
-                    node = results[0]
-                    job = node.get("summary_fields", {}).get("job")
-                    if job and job.get("id"):
-                        terraform_node = job
-                        logger.info("Found Stage child job %s via template node %s", job["id"], STAGE_NODE_TEMPLATE_ID)
+                logger.info("Retrieved %d nodes for workflow %s", len(results), pk)
 
+                # 2️⃣ Try to match by static template node ID
+                for node in results:
+                    if node.get("workflow_job_template_node") == STAGE_NODE_TEMPLATE_ID:
+                        job = node.get("summary_fields", {}).get("job")
+                        if job:
+                            terraform_node = job
+                            logger.info("✅ Found Stage child job %s via template node %s",
+                                        job["id"], STAGE_NODE_TEMPLATE_ID)
+                            break
+
+                # 3️⃣ Fallback: search by job name if ID didn’t match
+                if not terraform_node:
+                    logger.warning("⚠️ No direct Stage node match found — falling back to name search")
+                    for node in results:
+                        node_job = node.get("summary_fields", {}).get("job")
+                        if node_job and any(k in node_job.get("name", "").lower() for k in ["stage", "terraform"]):
+                            terraform_node = node_job
+                            break
+
+                # 4️⃣ Use discovered child job ID for stdout
                 if terraform_node:
                     actual_job_id = terraform_node["id"]
-                    logger.info("Using Stage job ID %s instead of workflow ID %s", actual_job_id, pk)
+                    logger.info("Resolved actual Stage job ID %s for workflow %s", actual_job_id, pk)
                 else:
-                    logger.warning("No Stage node found for workflow %s; falling back to workflow stdout", pk)
+                    logger.warning("⚠️ No Stage node found; using workflow stdout fallback")
 
             except Exception as e:
                 logger.exception("Error traversing workflow nodes for job %s: %s", pk, e)
 
-        # --- Fetch stdout from actual job ---
-        try:
-            stdout_response = awx.get_terraform_plan(actual_job_id)
-        except Exception as e:
-            logger.exception("Error fetching stdout for job %s: %s", actual_job_id, e)
-            return Response({"status": "pending", "detail": "error fetching job stdout"}, status=status.HTTP_202_ACCEPTED)
+                # --- Fetch stdout from actual job ---
+                try:
+                    stdout_response = awx.get_terraform_plan(actual_job_id)
+                except Exception as e:
+                    logger.exception("Error fetching stdout for job %s: %s", actual_job_id, e)
+                    return Response({"status": "pending", "detail": "error fetching job stdout"}, status=status.HTTP_202_ACCEPTED)
 
         # --- Extract stdout text ---
         if isinstance(stdout_response, dict):

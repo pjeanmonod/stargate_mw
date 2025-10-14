@@ -11,6 +11,10 @@ from .models import BuildRequest, InfraOutput, TerraformPlan
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer
 from .awx import AWX
 from .input_handler import format_awx_request
+import logging
+import re
+
+logger = logging.getLogger(__name__)
 
 
 # -------------------- #
@@ -79,59 +83,144 @@ class configure(APIView):
 # ---------------------- #
 #  Get Terraform Plan  #
 # ---------------------- #
+import logging
+import re
+
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+
+from .models import TerraformPlan
+from .awx import AWX
+
+logger = logging.getLogger(__name__)
+
+
 class TerraformPlanViewSet(viewsets.ViewSet):
+    """
+    Poll AWX for the job stdout, extract the terraform plan, save to DB (plan_text),
+    and return 202 while pending or 200 with the plan when available.
+    """
+
     def retrieve(self, request, pk=None):
-        from .awx import AWX
-        from .models import TerraformPlan
-        from .utils import save_terraform_plan
-        import logging
+        logger.info("Polling Terraform plan for job %s (request by %s)", pk, request.user)
 
-        logger = logging.getLogger(__name__)
-
+        # Ensure there is a DB row for this job_id (create placeholder if needed)
         try:
-            plan = TerraformPlan.objects.get(job_id=pk)
-        except TerraformPlan.DoesNotExist:
-            return Response(
-                {"message": "Plan not ready yet."},
-                status=status.HTTP_202_ACCEPTED
-            )
+            plan, created = TerraformPlan.objects.get_or_create(job_id=pk)
+            if created:
+                logger.info("Created placeholder TerraformPlan DB row for job %s", pk)
+        except Exception as e:
+            logger.exception("DB error getting/creating TerraformPlan for job %s: %s", pk, e)
+            return Response({"error": "DB error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # If plan already exists and is completed, return it
+        # If plan already present, return immediately
         if plan.plan_text:
-            return Response({"plan": plan.plan_text}, status=status.HTTP_200_OK)
+            logger.info("Plan already present in DB for job %s (id=%s), returning", pk, plan.id)
+            return Response({"status": "completed", "plan_text": plan.plan_text}, status=status.HTTP_200_OK)
 
-        # Otherwise, poll AWX for it
+        # Create AWX client and fetch job metadata & stdout
         awx = AWX()
-        response = awx.get_terraform_plan(pk)
+        try:
+            job_meta = awx.get_job(pk)  # must return a dict-like with 'status' or similar
+        except Exception as e:
+            logger.exception("Error fetching job metadata for job %s: %s", pk, e)
+            # transient error — keep polling
+            return Response({"status": "pending", "detail": "error fetching job metadata"}, status=status.HTTP_202_ACCEPTED)
 
-        if response.status_code != 200:
-            logger.warning(f"AWX returned {response.status_code} for job {pk}")
-            return Response(
-                {"message": "Plan still processing."},
-                status=status.HTTP_202_ACCEPTED
-            )
+        job_status = None
+        try:
+            # job_meta might be a requests.Response.json() or a dict-like object
+            job_status = job_meta.get("status") if isinstance(job_meta, dict) else getattr(job_meta, "status", None)
+        except Exception:
+            job_status = None
 
-        stdout = response.text
-        logger.info(f"Got {len(stdout)} chars of stdout from AWX for job {pk}")
+        logger.info("AWX job %s status: %s", pk, job_status)
 
+        # Fetch full stdout text using your AWX helper which calls /jobs/{id}/stdout/?format=txt
+        try:
+            stdout_response = awx.get_terraform_plan(pk)
+        except Exception as e:
+            logger.exception("Error fetching stdout for job %s: %s", pk, e)
+            return Response({"status": "pending", "detail": "error fetching job stdout"}, status=status.HTTP_202_ACCEPTED)
+
+        if not stdout_response or getattr(stdout_response, "status_code", None) != 200:
+            code = getattr(stdout_response, "status_code", None)
+            logger.info("AWX stdout endpoint returned non-200 (%s) for job %s — still processing", code, pk)
+            return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
+
+        stdout = stdout_response.text or ""
+        logger.info("AWX stdout first 500 chars for job %s:\n%s", pk, stdout[:500].replace("\n", "\\n"))
+
+        # --- Extraction strategies ---
+
+        # Strategy A: explicit markers
         begin_marker = "===BEGIN_TERRAFORM_PLAN==="
         end_marker = "===END_TERRAFORM_PLAN==="
 
         start = stdout.find(begin_marker)
         end = stdout.find(end_marker)
 
-        if start != -1 and end != -1 and end > start:
-            plan_text = stdout[start + len(begin_marker):end].strip()
-            plan.plan_text = plan_text
-            plan.save()
-            logger.info(f"Terraform plan parsed and saved for job {pk}")
-            return Response({"plan": plan_text}, status=status.HTTP_200_OK)
+        extracted = None
 
-        logger.info(f"Plan markers not found for job {pk}, likely still running.")
-        return Response(
-            {"message": "Plan still processing."},
-            status=status.HTTP_202_ACCEPTED
-        )
+        if start != -1 and end != -1 and end > start:
+            extracted = stdout[start + len(begin_marker):end].strip()
+            logger.info("Found plan markers for job %s (marker strategy). Extracted length: %d", pk, len(extracted))
+        else:
+            # Strategy B: If markers not present, attempt to locate terraform show / Plan block heuristically.
+            # Look for the common terraform intro line "Terraform used the selected providers"
+            terraform_intro_re = re.compile(r"(Terraform used the selected providers[\s\S]+?)(?:Changes to Outputs:|Plan:|\Z)", re.IGNORECASE)
+            m = terraform_intro_re.search(stdout)
+            if m:
+                extracted = m.group(0).strip()
+                logger.info("Found terraform 'used the selected providers' block for job %s. Extracted length: %d", pk, len(extracted))
+            else:
+                # Strategy C: try to find the 'Plan:' summary and everything after it
+                plan_re = re.compile(r"(Plan:.*?$[\s\S]*)", re.MULTILINE)
+                m2 = plan_re.search(stdout)
+                if m2:
+                    # include some context: try to capture a reasonable chunk from near the Plan: line
+                    # We'll take from 2000 chars before match start to the end (clamped)
+                    start_idx = max(0, m2.start() - 2000)
+                    extracted = stdout[start_idx:].strip()
+                    logger.info("Found 'Plan:' section for job %s. Extracted length: %d", pk, len(extracted))
+
+        # If we've got something, save it and update DB
+        if extracted:
+            try:
+                plan.plan_text = extracted
+                # Set status to 'completed' (or 'done' depending on your model choices)
+                # If your model uses a status field name different from plan.status, adjust accordingly.
+                try:
+                    plan.status = "completed"
+                except Exception:
+                    # if model doesn't have status field, ignore
+                    pass
+                plan.save()
+                logger.info("Saved terraform plan for job %s into DB (TerraformPlan id=%s)", pk, plan.id)
+                return Response({"status": "completed", "plan_text": plan.plan_text}, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.exception("Failed to save extracted plan for job %s: %s", pk, e)
+                return Response({"error": "failed to save plan"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # If job is explicitly failed, save stdout for debugging
+        if job_status and str(job_status).lower() in ("failed", "error"):
+            try:
+                plan.plan_text = stdout[:100000]  # store some stdout for debugging
+                try:
+                    plan.status = "failed"
+                except Exception:
+                    pass
+                plan.save()
+                logger.info("Job %s failed; saved stdout to plan_text for debugging.", pk)
+                return Response({"status": "failed", "plan_text": plan.plan_text}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                logger.exception("Failed to save stdout on failure for job %s: %s", pk, e)
+                return Response({"error": "failed to save stdout"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Otherwise the job is likely still running or stdout is not yet ready
+        logger.info("Plan not yet extractable for job %s; returning pending.", pk)
+        return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
+
 
 # ------------------------ #
 #  Approve Terraform Plan  #

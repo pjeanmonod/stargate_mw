@@ -87,7 +87,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 
     def retrieve(self, request, pk=None):
         try:
-            plan = TerraformPlan.objects.get(awx_job_id=pk)
+            plan = TerraformPlan.objects.get(job_id=pk)
         except TerraformPlan.DoesNotExist:
             return Response(
                 {"message": "Plan not found yet."},

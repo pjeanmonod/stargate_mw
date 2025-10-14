@@ -127,7 +127,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                 nodes_url = f"{awx.url}/api/v2/workflow_jobs/{pk}/workflow_nodes/?workflow_job_template_node={STAGE_NODE_TEMPLATE_ID}"
                 logger.info("Looking up Stage node by template ID %s for workflow %s", STAGE_NODE_TEMPLATE_ID, pk)
 
-                resp = awx.session.get(nodes_url, auth=awx.auth, verify=False)
+                resp = awx.session.get(nodes_url, verify=False)
                 resp.raise_for_status()
                 results = resp.json().get("results", [])
 

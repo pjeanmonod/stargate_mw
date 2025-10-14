@@ -4,15 +4,11 @@ from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .utils import save_terraform_plan
 import traceback
 from pprint import pprint
 
 from .models import BuildRequest, InfraOutput, TerraformPlan
-from .serializers import (
-    InfraOutputSerializer,
-    CustomTokenObtainPairSerializer,
-)
+from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer
 from .awx import AWX
 from .input_handler import format_awx_request
 
@@ -83,39 +79,62 @@ class configure(APIView):
 # ---------------------- #
 #  Get Terraform Plan  #
 # ---------------------- #
-
 class TerraformPlanViewSet(viewsets.ViewSet):
+    """
+    Retrieves Terraform plan status and output.
+    Polls AWX job and stores TF plan in DB once available.
+    """
+
     def retrieve(self, request, pk=None):
         try:
-            plan = TerraformPlan.objects.get(job_id=pk)
+            plan = TerraformPlan.objects.get(awx_job_id=pk)
         except TerraformPlan.DoesNotExist:
             return Response(
-                {"message": "Plan not ready yet."},
+                {"message": "Plan not found yet."},
                 status=status.HTTP_202_ACCEPTED
             )
 
-        if not plan.plan_text:
+        # Poll AWX only if plan is still pending
+        if plan.status == "pending":
+            awx = AWX()
+            job = awx.get_job(plan.awx_job_id)  # Replace with actual AWX API call
+            stdout = getattr(job, "stdout", "")
+
+            if getattr(job, "status", None) == "successful":
+                # Parse TF plan from AWX stdout
+                begin_marker = "===BEGIN_TERRAFORM_PLAN==="
+                end_marker = "===END_TERRAFORM_PLAN==="
+
+                start = stdout.find(begin_marker)
+                end = stdout.find(end_marker)
+
+                if start != -1 and end != -1 and end > start:
+                    plan_text = stdout[start + len(begin_marker):end].strip()
+                    plan.tfplan_text = plan_text
+                else:
+                    plan.tfplan_text = "Could not parse Terraform plan from AWX stdout."
+
+                plan.status = "completed"
+                plan.save()
+
+            elif getattr(job, "status", None) == "failed":
+                plan.status = "failed"
+                plan.tfplan_text = stdout  # save stdout for debugging
+                plan.save()
+
+        # Return current plan status
+        if plan.status == "pending":
+            return Response({"status": "pending"}, status=status.HTTP_202_ACCEPTED)
+        elif plan.status == "failed":
             return Response(
-                {"message": "Plan still processing."},
-                status=status.HTTP_202_ACCEPTED
+                {"status": "failed", "tfplan_text": plan.tfplan_text},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        return Response({"plan": plan.plan_text}, status=status.HTTP_200_OK)
-    
-
-class TerraformCallbackView(APIView):
-    def post(self, request):
-        job_id = request.data.get("job_id")
-        plan_output = request.data.get("plan_output")
-
-        if not job_id or not plan_output:
-            return Response({"error": "Missing job_id or plan_output"}, status=400)
-
-        # Save the plan in DB
-        save_terraform_plan(job_id, plan_output)
-
-        return Response({"status": "plan saved"}, status=status.HTTP_200_OK)
-
+        else:
+            return Response(
+                {"status": "completed", "tfplan_text": plan.tfplan_text},
+                status=status.HTTP_200_OK
+            )
 
 
 # ------------------------ #

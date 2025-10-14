@@ -111,6 +111,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
         awx = AWX()
         stdout = ""
         job_status = None
+        actual_job_id = pk
 
         # --- Fetch workflow/job metadata ---
         try:
@@ -119,50 +120,50 @@ class TerraformPlanViewSet(viewsets.ViewSet):
             logger.exception("Error fetching job metadata for job %s: %s", pk, e)
             return Response({"status": "pending", "detail": "error fetching job metadata"}, status=status.HTTP_202_ACCEPTED)
 
-             # --- Determine which job actually has stdout with Terraform plan in it ---
-        actual_job_id = pk
-
+        # --- Handle workflow job: find the Stage child job ---
         if job_meta.get("type") == "workflow_job":
             try:
                 terraform_node = None
+                STAGE_NODE_TEMPLATE_ID = 767  # your static StarGate - Stage node ID
 
-                # Try summary_fields first
-                nodes = job_meta.get("summary_fields", {}).get("workflow_nodes") or []
+                # 1️⃣ Try to fetch job node directly by template node ID
+                nodes_url = f"{awx.url}/api/v2/workflow_jobs/{pk}/workflow_nodes/?workflow_job_template_node={STAGE_NODE_TEMPLATE_ID}"
+                logger.info("Attempting Stage node lookup by template ID %s for workflow %s", STAGE_NODE_TEMPLATE_ID, pk)
 
-                # If not present, call AWX API directly to list workflow nodes
-                if not nodes:
-                    nodes_url = f"workflow_jobs/{pk}/workflow_nodes/"
-                    logger.info("Fetching workflow nodes from AWX: %s", nodes_url)
-                    nodes_resp = awx.session.get(awx.url + nodes_url, auth=awx.auth, verify=False)
+                resp = awx.session.get(nodes_url, auth=awx.auth, verify=False)
+                resp.raise_for_status()
+                results = resp.json().get("results", [])
+
+                if results:
+                    node = results[0]
+                    job = node.get("summary_fields", {}).get("job")
+                    if job:
+                        terraform_node = job
+                        logger.info("Found Stage child job %s via template node %s", job["id"], STAGE_NODE_TEMPLATE_ID)
+
+                # 2️⃣ Fallback: search by name
+                if not terraform_node:
+                    logger.warning("Direct Stage node lookup failed — falling back to name search")
+                    nodes_url = f"{awx.url}/api/v2/workflow_jobs/{pk}/workflow_nodes/"
+                    nodes_resp = awx.session.get(nodes_url, auth=awx.auth, verify=False)
                     nodes_resp.raise_for_status()
                     nodes = nodes_resp.json().get("results", [])
 
-                logger.info("Found %d workflow nodes for workflow job %s", len(nodes), pk)
+                    for node in nodes:
+                        node_job = node.get("summary_fields", {}).get("job")
+                        if node_job and any(k in node_job.get("name", "").lower() for k in ["stage", "terraform"]):
+                            terraform_node = node_job
+                            break
 
-                # Look for a node whose job name contains 'stage' or 'terraform'
-                for node in nodes:
-                    node_job = node.get("summary_fields", {}).get("job")
-                    if node_job and any(keyword in node_job.get("name", "").lower() for keyword in ["stage", "terraform"]):
-                        terraform_node = node_job
-                        break
-
+                # 3️⃣ Finalize which job to fetch stdout from
                 if terraform_node:
                     actual_job_id = terraform_node["id"]
-                    logger.info(
-                        "Found child job %s (%s) for workflow job %s",
-                        actual_job_id,
-                        terraform_node["name"],
-                        pk,
-                    )
+                    logger.info("Resolved actual Terraform/Stage job ID %s for workflow %s", actual_job_id, pk)
                 else:
-                    logger.warning(
-                        "No Stage/Terraform node found in workflow job %s; using workflow job stdout fallback",
-                        pk,
-                    )
+                    logger.warning("No Stage/Terraform node found for workflow job %s; using workflow stdout fallback", pk)
 
             except Exception as e:
-                logger.exception("Error traversing workflow nodes for workflow job %s: %s", pk, e)
- 
+                logger.exception("Error traversing workflow nodes for job %s: %s", pk, e)
 
         # --- Fetch stdout from actual job ---
         try:

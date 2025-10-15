@@ -127,7 +127,6 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=["get"])
     def retrieve(self, request, pk=None):
         """
         GET /api/terraform-plan/<job_id>/

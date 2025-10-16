@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
-    'stargate_mw_middleware.apps.cloud01',
+    'stargate_mw.middleware.apps.cloud01',
 ]
 
 MIDDLEWARE = [

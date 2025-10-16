@@ -93,7 +93,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 
     def create(self, request):
         """
-        POST /api/terraform-plan/
+        POST /api/cloud01/infra/terraform/plan/
         Called by Ansible when the staging playbook finishes.
 
         Body:
@@ -102,6 +102,54 @@ class TerraformPlanViewSet(viewsets.ViewSet):
             "plan_text": "Terraform plan output..."
         }
         """
+        try:
+            job_id = request.data.get("job_id")
+            plan_text = request.data.get("plan_text")
+
+            if not job_id or not plan_text:
+                return Response(
+                    {"error": "Missing job_id or plan_text"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Update or create the TerraformPlan record
+            plan, _ = TerraformPlan.objects.update_or_create(
+                job_id=job_id,
+                defaults={"plan_text": plan_text}
+            )
+
+            return Response(
+                {"message": f"Terraform plan stored for job {plan.job_id}"},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def retrieve(self, request, pk=None):
+        """
+        GET /api/cloud01/infra/terraform/plan/<job_id>/
+        Called by the frontend to check if the plan is available.
+        """
+        try:
+            plan = TerraformPlan.objects.filter(job_id=pk).first()
+            if not plan:
+                return Response(
+                    {"status": "pending", "message": "Plan not yet received"},
+                    status=status.HTTP_202_ACCEPTED
+                )
+
+            return Response(
+                {"job_id": plan.job_id, "plan_text": plan.plan_text},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 # ------------------------ #
 #  Approve Terraform Plan  #

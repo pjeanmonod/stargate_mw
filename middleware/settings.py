@@ -28,6 +28,8 @@ DEBUG = True
 
 
 
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -41,7 +43,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
-    'apps.cloud01'
+    'middleware.apps.cloud01',
 ]
 
 MIDDLEWARE = [

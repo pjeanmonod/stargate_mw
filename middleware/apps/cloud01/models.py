@@ -5,6 +5,9 @@ class BuildRequest(models.Model):
     job_data = models.JSONField()
     master_ticket = models.CharField(blank=True, max_length=50)
 
+    class Meta:
+        app_label = 'cloud01'  # explicitly assign the app label
+
     def __str__(self):
         return f"BuildRequest {self.request_id}"
 
@@ -13,6 +16,9 @@ class InfraOutput(models.Model):
     key = models.CharField(max_length=100, unique=True)
     value = models.JSONField()
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'cloud01'  # explicitly assign the app label
 
     def __str__(self):
         return f"{self.key}: {self.value}"
@@ -24,5 +30,9 @@ class TerraformPlan(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        app_label = 'cloud01'  # explicitly assign the app label
+
     def __str__(self):
         return f"Terraform Plan for Job {self.job_id}"
+ 

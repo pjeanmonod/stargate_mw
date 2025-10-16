@@ -7,6 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.decorators import action
 import traceback
 from pprint import pprint
+import uuid
 
 from .models import BuildRequest, InfraOutput, TerraformPlan
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer
@@ -55,7 +56,6 @@ class configure(APIView):
 
             # Capture frontend payload
             data = self.request.data
-            pprint(data, indent=3)
 
             # Convert frontend payload → AWX format
             job_vars = format_awx_request(data)
@@ -73,7 +73,7 @@ class configure(APIView):
             # Return AWX job info (expecting job_id)
             return Response(
                 {
-                    "success": "build successfully raised!",
+                    "success": "You are the greatest, build successfully raised!",
                     "run_id": run_id,
                     "awx_response": awx_response,
                 },

@@ -49,11 +49,20 @@ class configure(APIView):
         Receives payload from frontend, formats, and triggers AWX Terraform plan workflow.
         """
         try:
+
+            # Generate a unique UUID for this plan
+            run_id = str(uuid.uuid4())
+
+            # Capture frontend payload
             data = self.request.data
             pprint(data, indent=3)
 
             # Convert frontend payload → AWX format
             job_vars = format_awx_request(data)
+
+            # inject run_id into extra_vars
+            job_vars["run_id"] = run_id
+
             awx_request = {"extra_vars": job_vars}
             pprint(awx_request)
 
@@ -65,6 +74,7 @@ class configure(APIView):
             return Response(
                 {
                     "success": "build successfully raised!",
+                    "run_id": run_id,
                     "awx_response": awx_response,
                 },
                 status=200,

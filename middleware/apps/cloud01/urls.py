@@ -4,17 +4,24 @@ from rest_framework import routers
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import CustomTokenObtainPairView, InfraOutputViewSet, TerraformPlanViewSet
 
+# -----------------------------
+# DRF routers
+# -----------------------------
 router = routers.DefaultRouter()
-# router.register(r'buildrequest', views.BuildRequestViewSet, basename='BuildRequest')
 router.register(r'infra', InfraOutputViewSet, basename='infra')
 router.register(r'terraform/plan', TerraformPlanViewSet, basename='terraform-plan')
 
-
+# -----------------------------
+# URL patterns
+# -----------------------------
 urlpatterns = [
-    path('', include(router.urls)),
-    path('configure', views.configure.as_view()),
-    path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # Manual paths first
     path("terraform/approve/<str:job_id>/", views.approve_terraform_plan, name="terraform-approve"),
+    path("configure/", views.configure.as_view(), name="configure"),
+    path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+
+    # DRF router paths last
+    path("", include(router.urls)),
 ]
 

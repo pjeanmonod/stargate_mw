@@ -25,7 +25,7 @@ class InfraOutput(models.Model):
 
 
 class TerraformPlan(models.Model):
-    run_id = models.CharField(max_length=255, unique=True, null=True, blank=True) 
+    run_id = models.CharField(max_length=255, null=True, blank=True) 
     job_id = models.CharField(max_length=50, unique=True)
     plan_text = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

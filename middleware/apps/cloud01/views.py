@@ -40,57 +40,59 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 
 # ------------------------------------- #
-#  Configure / Launch Terraform Plan  #
+#  Configure / Launch Terraform Plan    #
 # ------------------------------------- #
 class configure(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, format=None):
         """
-        Receives payload from frontend, formats, and triggers AWX Terraform plan workflow.
+        Receives payload from frontend, formats it, triggers AWX Terraform plan workflow,
+        and stores mapping between run_id and workflow_job_id.
         """
         try:
-
-            # Generate a unique UUID for this plan
+            # Generate a unique run_id (keep your existing UUID logic)
             run_id = str(uuid.uuid4())
+            data = request.data
 
-            # Capture frontend payload
-            data = self.request.data
-
-            # Convert frontend payload → AWX format
+            # Format payload for AWX
             job_vars = format_awx_request(data)
-
-            # inject run_id into extra_vars
-            job_vars["run_id"] = run_id
-
+            job_vars["run_id"] = run_id  # Ensure run_id is included
             awx_request = {"extra_vars": job_vars}
-            pprint(awx_request)
 
-            # Launch AWX job via helper class
+            # Launch the AWX workflow
             awx = AWX()
             awx_response = awx.launch_build(awx_request)
 
-            # Return AWX job info (expecting job_id)
+            # Extract workflow job ID
+            awx_workflow_id = awx_response.get("id") or awx_response.get("workflow_job_id")
+
+            # Save mapping in DB (TerraformPlan)
+            TerraformPlan.objects.update_or_create(
+                run_id=run_id,
+                defaults={
+                    "workflow_job_id": awx_workflow_id,
+                    "plan_text": "",  # Keep empty initially
+                },
+            )
+
+            # Return response
             return Response(
                 {
-                    "success": "You are the greatest, build successfully raised!",
+                    "success": "Build successfully raised!",
                     "run_id": run_id,
+                    "workflow_job_id": awx_workflow_id,
                     "awx_response": awx_response,
                 },
-                status=200,
+                status=status.HTTP_200_OK,
             )
 
         except Exception as e:
-            print("Error launching AWX job:", e)
+            logger.exception("Error launching AWX job")
             return Response(
-                {
-                    "error": "Error encountered when submitting request.",
-                    "stacktrace": traceback.format_exc(),
-                },
-                status=500,
+                {"error": "Error encountered when submitting request.", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-
 # ---------------------- #
 #  Get Terraform Plan  #
 # ---------------------- #

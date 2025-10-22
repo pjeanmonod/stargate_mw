@@ -64,8 +64,11 @@ class configure(APIView):
             awx = AWX()
             awx_response = awx.launch_build(awx_request)
 
+            # Parse JSON from the requests.Response object
+            awx_response_json = awx_response.json()  
+
             # Extract workflow job ID
-            awx_workflow_id = awx_response.get("id") or awx_response.get("workflow_job_id")
+            awx_workflow_id = awx_response_json.get("id") or awx_response_json.get("workflow_job_id")
 
             # Save mapping in DB (TerraformPlan)
             TerraformPlan.objects.update_or_create(
@@ -167,11 +170,18 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 #  Approve Terraform Plan  #
 # ------------------------ #
 @api_view(["POST"])
-def approve_terraform_plan(request, job_id):
+def approve_terraform_plan(request, run_id):
     """Approve Terraform plan and continue workflow."""
     try:
+        plan = TerraformPlan.objects.filter(run_id=run_id).first()
+        if not plan or not plan.workflow_job_id:
+            return JsonResponse(
+                {"error": "No matching workflow_job_id found for this run_id."},
+                status=404,
+            )
+
         awx = AWX()
-        response = awx.approve_workflow(job_id)
+        response = awx.approve_workflow(plan.workflow_job_id)
 
         if response.status_code not in [200, 201, 204]:
             return JsonResponse(
@@ -179,6 +189,14 @@ def approve_terraform_plan(request, job_id):
                 status=response.status_code,
             )
 
-        return JsonResponse({"status": "approved", "job_id": job_id})
+        return JsonResponse(
+            {
+                "status": "approved",
+                "run_id": run_id,
+                "workflow_job_id": plan.workflow_job_id,
+            },
+            status=200,
+        )
     except Exception as e:
+        logger.exception("Error approving workflow")
         return JsonResponse({"error": str(e)}, status=500)

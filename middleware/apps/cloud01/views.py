@@ -182,11 +182,17 @@ def approve_terraform_plan(request, run_id):
                 {"error": f"Failed to approve workflow: {response.status_code}"},
                 status=response.status_code,
             )
-
+        # Success response for frontend snackbar
         return JsonResponse(
-            {"status": "approved", "run_id": run_id, "job_id": plan.job_id},
+            {
+                "success": True,
+                "message": f"Terraform plan {run_id} approved successfully.",
+                "run_id": run_id,
+                "job_id": plan.job_id,
+            },
             status=200,
         )
+
     except Exception as e:
         logger.exception("Error approving workflow")
-        return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)

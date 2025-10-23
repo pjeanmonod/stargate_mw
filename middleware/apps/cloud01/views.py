@@ -46,56 +46,53 @@ class configure(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, format=None):
-        """
-        Receives payload from frontend, formats it, and triggers AWX Terraform workflow.
-        Saves both run_id and AWX job_id to the database.
-        """
         try:
-            # Generate a unique UUID for this run
+            # 1️⃣ Generate UUID for run_id
             run_id = str(uuid.uuid4())
-            data = request.data
 
-            # Format payload for AWX and include run_id
-            job_vars = format_awx_request(data)
+            # 2️⃣ Format payload for AWX
+            job_vars = format_awx_request(request.data)
             job_vars["run_id"] = run_id
             awx_request = {"extra_vars": job_vars}
 
-            # Launch AWX workflow
+            # 3️⃣ Launch AWX workflow
             awx = AWX()
-            awx_response = awx.launch_build(awx_request)
+            response = awx.launch_build(awx_request)
 
-            # Parse AWX response JSON
-            if hasattr(awx_response, "json"):
-                awx_data = awx_response.json()
+            # 4️⃣ Ensure we have a dict
+            if hasattr(response, "json"):
+                awx_data = response.json()
             else:
-                awx_data = awx_response  # if already a dict
+                awx_data = response
 
-            # Extract AWX job ID
-            job_id = awx_data.get("id") or awx_data.get("workflow_job")  # e.g., 1075
+            # 5️⃣ Extract AWX job ID
+            awx_job_id = awx_data.get("id") or awx_data.get("workflow_job")
+            if not awx_job_id:
+                raise ValueError("AWX did not return a workflow/job ID")
 
-            # Extract run_id from extra_vars (JSON string)
+            # 6️⃣ Extract run_id from extra_vars (JSON string)
             extra_vars_str = awx_data.get("extra_vars", "{}")
             try:
                 extra_vars = json.loads(extra_vars_str)
                 run_id_from_awx = extra_vars.get("run_id", run_id)
-            except json.JSONDecodeError:
-                run_id_from_awx = run_id  # fallback
+            except Exception:
+                run_id_from_awx = run_id
 
-            # Save or update DB record
+            # 7️⃣ Save to DB correctly
             TerraformPlan.objects.update_or_create(
                 run_id=run_id_from_awx,
                 defaults={
-                    "job_id": str(job_id),
+                    "job_id": str(awx_job_id),
                     "plan_text": "",
                 },
             )
 
-            # Return success response
+            # 8️⃣ Return response to frontend
             return Response(
                 {
                     "success": "Build successfully raised!",
                     "run_id": run_id_from_awx,
-                    "job_id": job_id,
+                    "job_id": awx_job_id,
                     "awx_response": awx_data,
                 },
                 status=status.HTTP_200_OK,

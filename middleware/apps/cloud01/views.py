@@ -11,7 +11,7 @@ from pprint import pprint
 import uuid
 
 from .models import BuildRequest, InfraOutput, TerraformPlan
-from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer
+from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer
 from .awx import AWX
 from .input_handler import format_awx_request
 import logging
@@ -109,60 +109,30 @@ class configure(APIView):
 #  Get Terraform Plan  #
 # ---------------------- #
 
-class TerraformPlanViewSet(viewsets.ViewSet):
-    """
-    Handles receiving Terraform plan output from Ansible
-    and serving it to the frontend when requested.
-    """
 
-    def create(self, request):
-        """
-        POST /api/cloud01/infra/terraform/plan/
-        Called by Ansible when the staging playbook finishes.
+class TerraformPlanViewSet(viewsets.ModelViewSet):
+    queryset = TerraformPlan.objects.all()
+    serializer_class = TerraformPlanSerializer
 
-        Expected Body:
-        {
-            "run_id": "<UUID generated in configure>",
-            "job_id": "<AWX workflow/job ID>",
-            "plan_text": "Terraform plan output..."
-        }
-        """
-        try:
-            run_id = request.data.get("run_id")
-            job_id = request.data.get("job_id")
-            plan_text = request.data.get("plan_text")
+    def create(self, request, *args, **kwargs):
+        # Extract the AWX job/run ID
+        run_id = request.data.get("job_id")  # this is the actual run UUID
 
-            # Validate required fields
-            if not run_id or not job_id or not plan_text:
-                return Response(
-                    {"error": "Missing required fields: run_id, job_id, or plan_text"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # ✅ Update the existing record using run_id
-            plan, created = TerraformPlan.objects.update_or_create(
-                run_id=run_id,
-                defaults={
-                    "job_id": job_id,
-                    "plan_text": plan_text
-                }
-            )
-
+        if not run_id:
             return Response(
-                {
-                    "message": f"Terraform plan stored for run_id {plan.run_id}",
-                    "created": created,
-                    "job_id": plan.job_id
-                },
-                status=status.HTTP_200_OK
+                {"error": "job_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        except Exception as e:
-            logger.exception("Error storing Terraform plan")
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # Get or create the TerraformPlan by run_id
+        terraform_plan, created = TerraformPlan.objects.get_or_create(run_id=run_id)
+
+        # Update or set other fields from payload
+        terraform_plan.plan_text = request.data.get("plan_text", terraform_plan.plan_text)
+        terraform_plan.save()
+
+        serializer = self.get_serializer(terraform_plan)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
     def retrieve(self, request, pk=None):
         """

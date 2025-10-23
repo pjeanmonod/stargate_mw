@@ -32,9 +32,10 @@ class AWX:
 
     def approve_workflow(self, job_id):
         """
-        Approve the workflow job so Terraform apply can proceed.
+        Approve the workflow approval node so Terraform apply can proceed.
         """
-        url_full = urljoin(self.url, f"workflow_jobs/{job_id}/approve/")
+        approval_id = int(job_id) + 3  # your fixed +3 offset
+        url_full = urljoin(self.url, f"workflow_approvals/{approval_id}/approve/")
         response = self.session.post(url_full)
         return response
     

@@ -172,12 +172,9 @@ def approve_terraform_plan(request, run_id):
                 status=404,
             )
 
-        # Compute the approval node ID (+3) and convert to int
-        approval_node_id = int(plan.job_id) + 3
-
         # Approve the workflow in AWX
         awx = AWX()
-        response = awx.approve_workflow(approval_node_id)
+        response = awx.approve_workflow(plan.job_id)
 
         # Handle AWX response
         if response.status_code not in [200, 201, 204]:
@@ -187,10 +184,9 @@ def approve_terraform_plan(request, run_id):
             )
 
         return JsonResponse(
-            {"status": "approved", "run_id": run_id, "approval_node_id": approval_node_id},
+            {"status": "approved", "run_id": run_id, "job_id": plan.job_id},
             status=200,
         )
     except Exception as e:
         logger.exception("Error approving workflow")
         return JsonResponse({"error": str(e)}, status=500)
-

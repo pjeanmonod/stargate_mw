@@ -16,7 +16,7 @@ router.register(r'terraform/plan', TerraformPlanViewSet, basename='terraform-pla
 # -----------------------------
 urlpatterns = [
     # Manual paths first
-    path("terraform/approve/<str:job_id>/", views.approve_terraform_plan, name="terraform-approve"),
+    path("terraform/approve/<str:run_id>/", views.approve_terraform_plan, name="terraform-approve"),
     path("configure/", views.configure.as_view(), name="configure"),
     path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),

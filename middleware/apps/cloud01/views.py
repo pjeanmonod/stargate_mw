@@ -64,7 +64,12 @@ class configure(APIView):
             awx_response = awx.launch_build(awx_request)
 
             # Extract the AWX job/workflow ID from the API response
-            awx_job_id = awx_response.get("id")
+            awx_data = getattr(awx_response, "data", awx_response)
+            awx_job_id = awx_data.get("id")
+
+            print("AWX response type:", type(awx_response))
+            print("AWX response content:", getattr(awx_response, 'data', awx_response))
+
 
             # Save the mapping between our run_id and AWX job ID
             TerraformPlan.objects.update_or_create(

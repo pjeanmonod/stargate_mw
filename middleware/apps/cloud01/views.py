@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.decorators import action
+import json
 import traceback
 from pprint import pprint
 import uuid
@@ -119,33 +120,45 @@ class TerraformPlanViewSet(viewsets.ViewSet):
         POST /api/cloud01/infra/terraform/plan/
         Called by Ansible when the staging playbook finishes.
 
-        Body:
+        Expected Body:
         {
-            "job_id": "894",
+            "run_id": "<UUID generated in configure>",
+            "job_id": "<AWX workflow/job ID>",
             "plan_text": "Terraform plan output..."
         }
         """
         try:
+            run_id = request.data.get("run_id")
             job_id = request.data.get("job_id")
             plan_text = request.data.get("plan_text")
 
-            if not job_id or not plan_text:
+            # Validate required fields
+            if not run_id or not job_id or not plan_text:
                 return Response(
-                    {"error": "Missing job_id or plan_text"},
+                    {"error": "Missing required fields: run_id, job_id, or plan_text"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Update or create the TerraformPlan record
-            plan, _ = TerraformPlan.objects.update_or_create(
-                job_id=job_id,
-                defaults={"plan_text": plan_text}
+            # ✅ Update the existing record using run_id
+            plan, created = TerraformPlan.objects.update_or_create(
+                run_id=run_id,
+                defaults={
+                    "job_id": job_id,
+                    "plan_text": plan_text
+                }
             )
 
             return Response(
-                {"message": f"Terraform plan stored for job {plan.job_id}"},
+                {
+                    "message": f"Terraform plan stored for run_id {plan.run_id}",
+                    "created": created,
+                    "job_id": plan.job_id
+                },
                 status=status.HTTP_200_OK
             )
+
         except Exception as e:
+            logger.exception("Error storing Terraform plan")
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -153,11 +166,11 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 
     def retrieve(self, request, pk=None):
         """
-        GET /api/cloud01/infra/terraform/plan/<job_id>/
+        GET /api/cloud01/infra/terraform/plan/<run_id>/
         Called by the frontend to check if the plan is available.
         """
         try:
-            plan = TerraformPlan.objects.filter(job_id=pk).first()
+            plan = TerraformPlan.objects.filter(run_id=pk).first()
             if not plan:
                 return Response(
                     {"status": "pending", "message": "Plan not yet received"},
@@ -165,7 +178,7 @@ class TerraformPlanViewSet(viewsets.ViewSet):
                 )
 
             return Response(
-                {"job_id": plan.job_id, "plan_text": plan.plan_text},
+                {"run_id": plan.run_id, "job_id": plan.job_id, "plan_text": plan.plan_text},
                 status=status.HTTP_200_OK
             )
         except Exception as e:

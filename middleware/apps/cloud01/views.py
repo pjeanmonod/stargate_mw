@@ -46,35 +46,29 @@ class configure(APIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, format=None):
-        """
-        Receives payload from frontend, formats, and triggers AWX Terraform plan workflow.
-        """
         try:
-            # Generate a local run ID (UUID)
+            # ✅ Generate unique run_id (UUID)
             run_id = str(uuid.uuid4())
             data = request.data
 
-            # Prepare payload for AWX
+            # Format payload for AWX
             job_vars = format_awx_request(data)
-            job_vars["run_id"] = run_id
+            job_vars["run_id"] = run_id  # this goes into run_id
+
             awx_request = {"extra_vars": job_vars}
 
-            # Launch workflow in AWX
             awx = AWX()
             awx_response = awx.launch_build(awx_request)
-
-            # Parse JSON from requests.Response
             awx_data = awx_response.json()
-            print("AWX response JSON:", awx_data)  
 
-            # Extract workflow job ID
-            awx_job_id = awx_data.get("id")
+            # Extract AWX workflow job ID (goes into job_id)
+            awx_job_id = awx_data.get("id") or awx_data.get("workflow_job_id")
 
-            # Save the mapping between our run_id and AWX job ID
+            # ✅ Save in DB: run_id and job_id correctly assigned
             TerraformPlan.objects.update_or_create(
-                run_id=run_id,
+                run_id=run_id,  # UUID
                 defaults={
-                    "job_id": awx_job_id,
+                    "job_id": str(awx_job_id),  # AWX job ID
                     "plan_text": "",
                 },
             )
@@ -92,7 +86,7 @@ class configure(APIView):
         except Exception as e:
             logger.exception("Error launching AWX job")
             return Response(
-                {"error": f"Error encountered when submitting request: {str(e)}"},
+                {"error": "Error encountered when submitting request."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

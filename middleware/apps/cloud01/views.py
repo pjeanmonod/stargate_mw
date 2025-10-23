@@ -174,7 +174,8 @@ def approve_terraform_plan(request, run_id):
 
         # Approve the workflow in AWX
         awx = AWX()
-        response = awx.approve_workflow(plan.job_id)
+        approval_node_id = plan.job_id + 3  # <-- add 3 to reach the approval node 
+        response = awx.approve_workflow(approval_node_id)
 
         # Handle AWX response
         if response.status_code not in [200, 201, 204]:

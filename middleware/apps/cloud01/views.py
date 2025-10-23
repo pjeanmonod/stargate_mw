@@ -167,18 +167,21 @@ class TerraformPlanViewSet(viewsets.ViewSet):
 # ------------------------ #
 @api_view(["POST"])
 def approve_terraform_plan(request, run_id):
-    """Approve Terraform plan and continue workflow."""
+    """Approve Terraform plan and continue the AWX workflow."""
     try:
+        # Look up the Terraform plan by run_id
         plan = TerraformPlan.objects.filter(run_id=run_id).first()
-        if not plan or not plan.workflow_job_id:
+        if not plan or not plan.job_id:
             return JsonResponse(
-                {"error": "No matching workflow_job_id found for this run_id."},
+                {"error": "No matching AWX job_id found for this run_id."},
                 status=404,
             )
 
+        # Approve the workflow in AWX
         awx = AWX()
-        response = awx.approve_workflow(plan.workflow_job_id)
+        response = awx.approve_workflow(plan.job_id)
 
+        # Handle AWX response
         if response.status_code not in [200, 201, 204]:
             return JsonResponse(
                 {"error": f"Failed to approve workflow: {response.status_code}"},
@@ -186,11 +189,7 @@ def approve_terraform_plan(request, run_id):
             )
 
         return JsonResponse(
-            {
-                "status": "approved",
-                "run_id": run_id,
-                "workflow_job_id": plan.workflow_job_id,
-            },
+            {"status": "approved", "run_id": run_id, "job_id": plan.job_id},
             status=200,
         )
     except Exception as e:

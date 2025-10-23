@@ -47,44 +47,39 @@ class configure(APIView):
 
     def post(self, request, format=None):
         """
-        Receives payload from frontend, formats it, triggers AWX Terraform plan workflow,
-        and stores mapping between run_id and workflow_job_id.
+        Receives payload from frontend, formats, and triggers AWX Terraform plan workflow.
         """
         try:
-            # Generate a unique run_id (keep your existing UUID logic)
+            # Generate a local run ID (UUID)
             run_id = str(uuid.uuid4())
             data = request.data
 
-            # Format payload for AWX
+            # Prepare payload for AWX
             job_vars = format_awx_request(data)
-            job_vars["run_id"] = run_id  # Ensure run_id is included
+            job_vars["run_id"] = run_id
             awx_request = {"extra_vars": job_vars}
 
-            # Launch the AWX workflow
+            # Launch workflow in AWX
             awx = AWX()
             awx_response = awx.launch_build(awx_request)
 
-            # Parse JSON from the requests.Response object
-            awx_response_json = awx_response.json()  
+            # Extract the AWX job/workflow ID from the API response
+            awx_job_id = awx_response.get("id")
 
-            # Extract workflow job ID
-            awx_workflow_id = awx_response_json.get("id") or awx_response_json.get("workflow_job_id")
-
-            # Save mapping in DB (TerraformPlan)
+            # Save the mapping between our run_id and AWX job ID
             TerraformPlan.objects.update_or_create(
                 run_id=run_id,
                 defaults={
-                    "workflow_job_id": awx_workflow_id,
-                    "plan_text": "",  # Keep empty initially
+                    "job_id": awx_job_id,
+                    "plan_text": "",
                 },
             )
 
-            # Return response
             return Response(
                 {
                     "success": "Build successfully raised!",
                     "run_id": run_id,
-                    "workflow_job_id": awx_workflow_id,
+                    "job_id": awx_job_id,
                     "awx_response": awx_response,
                 },
                 status=status.HTTP_200_OK,
@@ -93,9 +88,10 @@ class configure(APIView):
         except Exception as e:
             logger.exception("Error launching AWX job")
             return Response(
-                {"error": "Error encountered when submitting request.", "details": str(e)},
+                {"error": f"Error encountered when submitting request: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 # ---------------------- #
 #  Get Terraform Plan  #
 # ---------------------- #

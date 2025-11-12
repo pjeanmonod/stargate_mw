@@ -39,6 +39,15 @@ class AWX:
         response = self.session.post(url_full)
         return response
     
+    def approve_destroy_workflow(self, job_id):
+        """
+        Approve the workflow approval node so Terraform destroy can proceed.
+        """
+        approval_id = int(job_id) + 5  # destroy node offset (+5)
+        url_full = urljoin(self.url, f"workflow_approvals/{approval_id}/approve/")
+        response = self.session.post(url_full)
+        return response
+    
     def get_job(self, job_id):
         """
         Fetch AWX job metadata by ID.

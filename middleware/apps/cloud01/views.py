@@ -160,6 +160,7 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
 # ------------------------ #
 #  Approve Terraform Plan  #
 # ------------------------ #
+
 @api_view(["POST"])
 def approve_terraform_plan(request, run_id):
     """Approve Terraform plan and continue the AWX workflow."""
@@ -195,4 +196,54 @@ def approve_terraform_plan(request, run_id):
 
     except Exception as e:
         logger.exception("Error approving workflow")
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+    
+
+# ------------------------- #
+#  Approve Terraform Destroy #
+# ------------------------- #
+
+@api_view(["POST"])
+def approve_terraform_destroy(request, run_id):
+    """Approve Terraform destroy workflow via AWX."""
+    try:
+        # 1️⃣ Look up the Terraform plan by run_id
+        plan = TerraformPlan.objects.filter(run_id=run_id).first()
+        if not plan or not plan.job_id:
+            return JsonResponse(
+                {"error": "No matching AWX job_id found for this run_id."},
+                status=404,
+            )
+
+        # 2️⃣ Approve the destroy workflow in AWX (approval node)
+        awx = AWX()
+        response = awx.approve_destroy_workflow(plan.job_id)  # same AWX method as plan approval
+
+        # 3️⃣ Handle AWX response
+        if response.status_code not in [200, 201, 204]:
+            return JsonResponse(
+                {
+                    "error": f"Failed to approve destroy workflow: {response.status_code}",
+                    "details": response.text,
+                },
+                status=response.status_code,
+            )
+
+        # 4️⃣ (Optional) Clean up middleware database after approval
+        from .models import Infra
+        Infra.objects.all().delete()
+
+        # 5️⃣ Return success
+        return JsonResponse(
+            {
+                "success": True,
+                "message": f"Terraform destroy for run {run_id} approved successfully.",
+                "run_id": run_id,
+                "job_id": plan.job_id,
+            },
+            status=200,
+        )
+
+    except Exception as e:
+        logger.exception("Error approving destroy workflow")
         return JsonResponse({"success": False, "message": str(e)}, status=500)

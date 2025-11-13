@@ -10,7 +10,7 @@ import traceback
 from pprint import pprint
 import uuid
 
-from .models import BuildRequest, InfraOutput, TerraformPlan
+from .models import InfraOutput, TerraformPlan
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer
 from .awx import AWX
 from .input_handler import format_awx_request
@@ -208,7 +208,7 @@ def destroy_all_infra(request, run_id):
     """Approve Terraform destroy workflow via AWX."""
     try:
         # 1️⃣ Delete DB entries
-        Infra.objects.all().delete()
+        InfraOutput.objects.all().delete()
         # 1️⃣ Look up the Terraform plan by run_id
         plan = TerraformPlan.objects.filter(run_id=run_id).first()
         if not plan or not plan.job_id:

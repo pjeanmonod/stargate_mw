@@ -20,8 +20,7 @@ urlpatterns = [
     path("configure/", views.configure.as_view(), name="configure"),
     path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
-    path("terraform/destroy/approve/<str:run_id>/", views.approve_terraform_destroy, name="terraform-destroy-approve"),
-
+    path("terraform/destroy-all/<str:run_id>/", views.destroy_all_infra, name="terraform-destroy-all"),
 
     # DRF router paths last
     path("", include(router.urls)),

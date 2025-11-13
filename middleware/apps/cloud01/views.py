@@ -204,9 +204,11 @@ def approve_terraform_plan(request, run_id):
 # ------------------------- #
 
 @api_view(["POST"])
-def approve_terraform_destroy(request, run_id):
+def destroy_all_infra(request, run_id):
     """Approve Terraform destroy workflow via AWX."""
     try:
+        # 1️⃣ Delete DB entries
+        Infra.objects.all().delete()
         # 1️⃣ Look up the Terraform plan by run_id
         plan = TerraformPlan.objects.filter(run_id=run_id).first()
         if not plan or not plan.job_id:

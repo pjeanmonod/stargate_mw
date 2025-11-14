@@ -205,6 +205,7 @@ def approve_terraform_plan(request, run_id):
 
 @api_view(["POST"])
 def destroy_all_infra(request, run_id):
+    logger.info(f"destroy_all_infra called with run_id={run_id}")  # for testing and then can be removed
     try:
         # Delete all infra outputs
         InfraOutput.objects.all().delete()
@@ -220,6 +221,8 @@ def destroy_all_infra(request, run_id):
         # Approve destroy workflow in AWX
         awx = AWX()
         response = awx.approve_destroy_workflow(plan.job_id)
+        logger.info(f"AWX approve_destroy_workflow returned {response.status_code}: {response.text}")
+
 
         if response.status_code in [200, 201, 204]:
             pass  # success

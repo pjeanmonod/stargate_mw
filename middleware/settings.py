@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework_simplejwt',
     'middleware.apps.cloud01',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -168,4 +169,15 @@ CSRF_COOKIE_SECURE = False
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000/', 'http://127.0.0.1:8000/', 'http://127.0.0.1:8080/', 'http://127.0.0.1:3001/']
 
 ALLOWED_HOSTS = ['*']
+
+ASGI_APPLICATION = "stargate_mw.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 

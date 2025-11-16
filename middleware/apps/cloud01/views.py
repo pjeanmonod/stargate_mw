@@ -9,9 +9,10 @@ import json
 import traceback
 from pprint import pprint
 import uuid
-
+from rest_framework.decorators import api_view
 from .models import InfraOutput, TerraformPlan
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer
+from cloud01.utils import broadcast_job_update
 from .awx import AWX
 from .input_handler import format_awx_request
 import logging
@@ -163,9 +164,9 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
 
 @api_view(["POST"])
 def approve_terraform_plan(request, run_id):
-    """Approve Terraform plan and continue the AWX workflow."""
+    """Approve Terraform plan, update DB, and broadcast via Channels."""
     try:
-        # Look up the Terraform plan by run_id
+        # Look up the Terraform plan
         plan = TerraformPlan.objects.filter(run_id=run_id).first()
         if not plan or not plan.job_id:
             return JsonResponse(
@@ -173,17 +174,17 @@ def approve_terraform_plan(request, run_id):
                 status=404,
             )
 
-        # Approve the workflow in AWX
-        awx = AWX()
-        response = awx.approve_workflow(plan.job_id)
+        # Mark plan as approved in DB
+        plan.plan_status = "approved"
+        plan.save(update_fields=["plan_status", "updated_at"])
 
-        # Handle AWX response
-        if response.status_code not in [200, 201, 204]:
-            return JsonResponse(
-                {"error": f"Failed to approve workflow: {response.status_code}"},
-                status=response.status_code,
-            )
-        # Success response for frontend snackbar
+        # Broadcast update to frontend
+        broadcast_job_update(
+            job_id=plan.job_id,
+            plan_status=plan.plan_status,
+            state_status=getattr(plan, "state_status", "unknown")
+        )
+
         return JsonResponse(
             {
                 "success": True,
@@ -195,10 +196,9 @@ def approve_terraform_plan(request, run_id):
         )
 
     except Exception as e:
-        logger.exception("Error approving workflow")
+        logger.exception("Error approving Terraform plan")
         return JsonResponse({"success": False, "message": str(e)}, status=500)
     
-
 # ------------------------- #
 #  Approve Terraform Destroy #
 # ------------------------- #

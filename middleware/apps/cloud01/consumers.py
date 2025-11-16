@@ -5,21 +5,27 @@ class PlanStatusConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         # Accept the connection
         await self.accept()
-        # Optionally add the user to a group if you want broadcast
+
+        # Add to the "plan_updates" group so we can broadcast
         await self.channel_layer.group_add("plan_updates", self.channel_name)
 
     async def disconnect(self, close_code):
+        # Remove from the group
         await self.channel_layer.group_discard("plan_updates", self.channel_name)
 
-    # Receive a message from WebSocket
+    # Receive updates from frontend (optional)
     async def receive_json(self, content):
-        # Example: you can handle messages from frontend here
         print("Received from frontend:", content)
         await self.send_json({"message": "Received!"})
 
-    # Method to receive updates from the group
+    # Receive updates from the group
     async def plan_update(self, event):
         """
-        event is a dict like: {"type": "plan_update", "job_id": "123", "status": "approved"}
+        event = {
+            "type": "plan_update",
+            "job_id": 123,
+            "plan_status": "approved",
+            "state_status": "locked",
+        }
         """
         await self.send_json(event)

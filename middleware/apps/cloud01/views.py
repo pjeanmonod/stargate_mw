@@ -12,7 +12,7 @@ import uuid
 from rest_framework.decorators import api_view
 from .models import InfraOutput, TerraformPlan
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer
-from cloud01.utils import broadcast_job_update
+from middleware.apps.cloud01.utils import broadcast_job_update
 from .awx import AWX
 from .input_handler import format_awx_request
 import logging

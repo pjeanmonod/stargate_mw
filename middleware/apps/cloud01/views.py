@@ -141,6 +141,7 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
         # 🔹 broadcast to WebSocket group
         broadcast_job_update(
             run_id=terraform_plan.run_id,
+            job_id=terraform_plan.job_id,
             plan_status=plan_status,
             state_status=state_status,
         )
@@ -200,6 +201,7 @@ def approve_terraform_plan(request, run_id):
 
         # Broadcast update to frontend
         broadcast_job_update(
+            run_id=plan.run_id,
             job_id=plan.job_id,
             plan_status=plan.plan_status,
             state_status=getattr(plan, "state_status", "unknown")

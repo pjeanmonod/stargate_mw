@@ -11,7 +11,7 @@ def save_terraform_plan(run_id, plan_output):
     obj.save()
 
 
-def broadcast_job_update(run_id, plan_status, state_status):
+def broadcast_job_update(run_id, job_id, plan_status, state_status):
     """
     Broadcast a job update to all connected websocket clients.
     """
@@ -22,6 +22,7 @@ def broadcast_job_update(run_id, plan_status, state_status):
         {
             "type": "plan_update",  # consumer method name
             "run_id": run_id,
+            "job_id": job_id,
             "plan_status": plan_status,
             "state_status": state_status,
         }

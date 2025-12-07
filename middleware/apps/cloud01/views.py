@@ -108,17 +108,16 @@ class configure(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 # ---------------------- #
-#  Get Terraform Plan  #
+#  Terraform Plan ViewSet
 # ---------------------- #
-
 
 class TerraformPlanViewSet(viewsets.ModelViewSet):
     queryset = TerraformPlan.objects.all()
     serializer_class = TerraformPlanSerializer
 
     def create(self, request, *args, **kwargs):
-        # Extract the AWX job/run ID
-        run_id = request.data.get("job_id")  # this is the actual run UUID
+        # Extract the run_id (your UUID)
+        run_id = request.data.get("job_id")  # this is your run UUID
 
         if not run_id:
             return Response(
@@ -126,38 +125,58 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get or create the TerraformPlan by run_id
+        # Fetch or create DB record
         terraform_plan, created = TerraformPlan.objects.get_or_create(run_id=run_id)
 
-        # Update or set other fields from payload
+        # Update plan text
         terraform_plan.plan_text = request.data.get("plan_text", terraform_plan.plan_text)
         terraform_plan.save()
 
+        # 🔹 derive statuses
+        plan_status = "ready" if terraform_plan.plan_text else "pending"
+
+        # state_status isn't stored yet — default to "unknown"
+        state_status = getattr(terraform_plan, "state_status", "unknown")
+
+        # 🔹 broadcast to WebSocket group
+        broadcast_job_update(
+            job_id=terraform_plan.run_id,   # run_id is what the FE uses
+            plan_status=plan_status,
+            state_status=state_status,
+        )
+
         serializer = self.get_serializer(terraform_plan)
-        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
 
     def retrieve(self, request, pk=None):
-        """
-        GET /api/cloud01/infra/terraform/plan/<run_id>/
-        Called by the frontend to check if the plan is available.
-        """
+        """GET /api/cloud01/terraform/plan/<run_id>/"""
         try:
             plan = TerraformPlan.objects.filter(run_id=pk).first()
+
             if not plan:
                 return Response(
-                    {"status": "pending", "message": "Plan not yet received"},
-                    status=status.HTTP_202_ACCEPTED
+                    {
+                        "run_id": pk,
+                        "plan_status": "pending",
+                        "plan_text": "",
+                        "message": "No plan yet",
+                    },
+                    status=202
                 )
 
-            return Response(
-                {"run_id": plan.run_id, "job_id": plan.job_id, "plan_text": plan.plan_text},
-                status=status.HTTP_200_OK
-            )
+            return Response({
+                "run_id": plan.run_id,
+                "job_id": plan.job_id,
+                "plan_text": plan.plan_text,
+                "plan_status": "ready" if plan.plan_text else "pending",
+            })
+
         except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=500)
+
 
 # ------------------------ #
 #  Approve Terraform Plan  #

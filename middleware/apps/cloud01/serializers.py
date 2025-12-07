@@ -20,9 +20,20 @@ class BuildRequestSerializer(serializers.HyperlinkedModelSerializer):
         fields = ('request_id', 'job_data', 'master_ticket')
 
 class JobStatusSerializer(serializers.ModelSerializer):
+    plan_status = serializers.SerializerMethodField()
+    state_status = serializers.SerializerMethodField()
+
     class Meta:
         model = TerraformPlan
-        fields = ["job_id", "run_id", "plan_text", "created_at"]
+        fields = ["run_id", "job_id", "plan_text", "created_at", "plan_status", "state_status"]
+
+    def get_plan_status(self, obj):
+        # derive from presence of plan_text
+        return "ready" if obj.plan_text else "pending"
+
+    def get_state_status(self, obj):
+        # you can improve this later; for now:
+        return "unknown"
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):

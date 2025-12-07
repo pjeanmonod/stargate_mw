@@ -170,7 +170,7 @@ CSRF_TRUSTED_ORIGINS = ['http://localhost:3000/', 'http://127.0.0.1:8000/', 'htt
 
 ALLOWED_HOSTS = ['*']
 
-ASGI_APPLICATION = "stargate_mw.asgi.application"
+ASGI_APPLICATION = "middleware.asgi.application"
 
 CHANNEL_LAYERS = {
     "default": {

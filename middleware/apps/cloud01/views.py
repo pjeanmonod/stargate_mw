@@ -11,13 +11,11 @@ from pprint import pprint
 import uuid
 from rest_framework.decorators import api_view
 from .models import InfraOutput, TerraformPlan
-from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer
+from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer, JobStatusSerializer
 from middleware.apps.cloud01.utils import broadcast_job_update
 from .awx import AWX
 from .input_handler import format_awx_request
 import logging
-import re
-from .serializers import JobStatusSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +115,7 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         # Extract the run_id (your UUID)
-        run_id = request.data.get("job_id")  # this is your run UUID
+        run_id = request.data.get("run_id")  # this is your run UUID
 
         if not run_id:
             return Response(

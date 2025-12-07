@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 class PlanStatusConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
+        print("WebSocket client connected:", self.channel_name)
         # Accept the connection
         await self.accept()
 

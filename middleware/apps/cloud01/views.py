@@ -136,6 +136,13 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
         # state_status isn't stored yet — default to "unknown"
         state_status = getattr(terraform_plan, "state_status", "unknown")
 
+        logger.info(
+            "Broadcasting plan update run_id=%s job_id=%s status=%s",
+            terraform_plan.run_id,
+            terraform_plan.job_id,
+            plan_status
+        )
+
         # 🔹 broadcast to WebSocket group
         broadcast_job_update(
             run_id=terraform_plan.run_id,

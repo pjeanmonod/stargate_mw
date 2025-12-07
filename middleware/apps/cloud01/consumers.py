@@ -28,4 +28,5 @@ class PlanStatusConsumer(AsyncJsonWebsocketConsumer):
             "state_status": "locked",
         }
         """
+        print("plan_update event:", event) 
         await self.send_json(event)

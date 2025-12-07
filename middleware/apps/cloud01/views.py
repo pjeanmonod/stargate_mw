@@ -140,7 +140,7 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
 
         # 🔹 broadcast to WebSocket group
         broadcast_job_update(
-            job_id=terraform_plan.run_id,   # run_id is what the FE uses
+            run_id=terraform_plan.run_id,
             plan_status=plan_status,
             state_status=state_status,
         )

@@ -115,7 +115,7 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         # Extract the run_id (your UUID)
-        run_id = request.data.get("run_id")  # this is your run UUID
+        run_id = request.data.get("job_id")  # this is your run UUID
 
         if not run_id:
             return Response(

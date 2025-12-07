@@ -19,6 +19,11 @@ class BuildRequestSerializer(serializers.HyperlinkedModelSerializer):
         model = BuildRequest
         fields = ('request_id', 'job_data', 'master_ticket')
 
+class JobStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TerraformPlan
+        fields = ["job_id", "plan_text", "created_at"]
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)

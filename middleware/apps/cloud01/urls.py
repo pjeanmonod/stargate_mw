@@ -2,7 +2,7 @@ from django.urls import include, path
 from . import views
 from rest_framework import routers
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import CustomTokenObtainPairView, InfraOutputViewSet, TerraformPlanViewSet
+from .views import CustomTokenObtainPairView, InfraOutputViewSet, TerraformPlanViewSet, JobListView
 
 # -----------------------------
 # DRF routers
@@ -21,6 +21,7 @@ urlpatterns = [
     path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("terraform/destroy-all/<str:run_id>/", views.destroy_all_infra, name="terraform-destroy-all"),
+    path("jobs/", JobListView.as_view(), name="jobs"),
 
     # DRF router paths last
     path("", include(router.urls)),

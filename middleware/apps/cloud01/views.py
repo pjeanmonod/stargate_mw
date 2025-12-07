@@ -17,6 +17,7 @@ from .awx import AWX
 from .input_handler import format_awx_request
 import logging
 import re
+from .serializers import JobStatusSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -246,4 +247,15 @@ def destroy_all_infra(request, run_id):
     except Exception as e:
         logger.exception("Error approving destroy workflow")
         return JsonResponse({"success": False, "message": str(e)}, status=500)
+    
+
+# ------------------------- #
+#  Job Status Page List view #
+# ------------------------- #
+
+class JobListView(APIView):
+    def get(self, request):
+        jobs = TerraformPlan.objects.all().order_by("-created_at")
+        serializer = JobStatusSerializer(jobs, many=True)
+        return Response(serializer.data)
 

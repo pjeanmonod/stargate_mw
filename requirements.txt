@@ -54,5 +54,6 @@ djangorestframework-simplejwt
 python-dotenv>=1.0.1,<2.0
 channels
 channels-redis
+daphne>=4.0
 
 

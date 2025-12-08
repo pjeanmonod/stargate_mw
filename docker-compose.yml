@@ -3,19 +3,10 @@ x-service-volumes:
   &service-volumes
   - ./:/app/:rw,cached
 
-# x-database-variables: &database-variables 
-#   POSTGRES_DB: postgres
-#   POSTGRES_USER: postgres
-#   POSTGRES_PASSWORD: postgres 
-
-# x-app-variables: &app-variables
-#   <<: *database-variables
-#   POSTGRES_HOST: postgres
-
 services:
   website:
     image: stargate_mw:latest
-    command: gunicorn -b 0.0.0.0:8000 --workers 16 --max-requests 1000 middleware.wsgi
+    command: daphne -b 0.0.0.0 -p 8000 middleware.asgi:application
     volumes: *service-volumes
     depends_on:
       - db_migrate
@@ -35,13 +26,4 @@ services:
 networks:
   edgegate_net:
     external: true
-  # postgres:
-  #   image: postgres
-  #   ports:
-  #     - "5432:5432"
-  #   environment: *database-variables
-  #   volumes:
-  #     - db-data:/var/lib/postgresql/data
 
-  # volumes:
-  #   db-data:

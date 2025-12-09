@@ -190,9 +190,9 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
 
 @api_view(["POST"])
 def approve_terraform_plan(request, run_id):
-    """Approve Terraform plan, update DB, and broadcast via Channels."""
+    """Approve Terraform plan in AWX and broadcast status; no DB status field."""
     try:
-        # Look up the Terraform plan
+        # Look up the Terraform plan by run_id
         plan = TerraformPlan.objects.filter(run_id=run_id).first()
         if not plan or not plan.job_id:
             return JsonResponse(
@@ -200,18 +200,29 @@ def approve_terraform_plan(request, run_id):
                 status=404,
             )
 
-        # Mark plan as approved in DB
-        plan.plan_status = "approved"
-        plan.save(update_fields=["plan_status", "updated_at"])
+        # 🔹 Approve the workflow in AWX (this is your old working logic)
+        awx = AWX()
+        response = awx.approve_workflow(plan.job_id)
 
-        # Broadcast update to frontend
+        if response.status_code not in [200, 201, 204]:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": f"Failed to approve workflow: {response.status_code}",
+                    "details": response.text,
+                },
+                status=response.status_code,
+            )
+
+        # 🔹 Broadcast "approved" to the websocket clients
         broadcast_job_update(
             run_id=plan.run_id,
             job_id=plan.job_id,
-            plan_status=plan.plan_status,
-            state_status=getattr(plan, "state_status", "unknown")
+            plan_status="approved",
+            state_status=getattr(plan, "state_status", "unknown"),
         )
 
+        # 🔹 Normal success response for the frontend
         return JsonResponse(
             {
                 "success": True,
@@ -225,6 +236,8 @@ def approve_terraform_plan(request, run_id):
     except Exception as e:
         logger.exception("Error approving Terraform plan")
         return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
     
 # ------------------------- #
 #  Approve Terraform Destroy #

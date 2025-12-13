@@ -12,16 +12,22 @@ class BuildRequest(models.Model):
         return f"BuildRequest {self.request_id}"
 
 
+from django.db import models
+
 class InfraOutput(models.Model):
-    key = models.CharField(max_length=100, unique=True)
-    value = models.JSONField()
+    job_id = models.CharField(max_length=100, db_index=True)  # or run_id
+    key = models.CharField(max_length=100)
+    value = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        app_label = 'cloud01'  # explicitly assign the app label
+        app_label = "cloud01"
+        constraints = [
+            models.UniqueConstraint(fields=["job_id", "key"], name="uniq_output_per_job_key")
+        ]
 
     def __str__(self):
-        return f"{self.key}: {self.value}"
+        return f"{self.job_id} | {self.key}: {self.value}"
 
 
 class TerraformPlan(models.Model):

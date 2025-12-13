@@ -26,15 +26,14 @@ def broadcast_plan_update(sender, instance, **kwargs):
 @receiver(post_save, sender=InfraOutput)
 def broadcast_state_update(sender, instance, **kwargs):
     data = {
-        "type": "plan_update",  # reuse same event type for frontend
-        "id": instance.key,
-        "state_status": getattr(instance, "state_status", "unknown"),
+        "type": "state_update",
+        "id": instance.job_id,        
+        "key": instance.key,
+        "state_status": "ready",      
         "state_output": instance.value or {},
     }
     async_to_sync(channel_layer.group_send)(
         "plan_updates",
-        {
-            "type": "plan_update",
-            **data,
-        }
+        {"type": "state_update", **data},
     )
+

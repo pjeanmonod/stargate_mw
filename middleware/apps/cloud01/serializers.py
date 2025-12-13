@@ -33,7 +33,7 @@ class JobStatusSerializer(serializers.ModelSerializer):
 
     def get_state_status(self, obj):
         # you can improve this later; for now:
-        return "unknown"
+        return None
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):

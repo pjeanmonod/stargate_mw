@@ -45,11 +45,10 @@ class InfraOutputViewSet(viewsets.ModelViewSet):
             run_id=job_id,
             state_status="ready",
             state_output=value,
-            output_key=key,   
+            output_key=key,
         )
 
-        # Return 201 for both create + update (fine for your Ansible expectation)
-        return Response(self.get_serializer(obj).data, status=status.HTTP_201_CREATED)   
+        return Response(self.get_serializer(obj).data, status=status.HTTP_201_CREATED)
 
 
 # -------------------- #

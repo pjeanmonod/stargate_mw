@@ -42,7 +42,7 @@ class InfraOutputViewSet(viewsets.ModelViewSet):
         )
 
         broadcast_job_update(
-            run_id=run_id,
+            run_id=job_id,
             state_status="ready",
             state_output=value,
             output_key=key,   
@@ -157,9 +157,6 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
         # 🔹 derive statuses
         plan_status = "ready" if terraform_plan.plan_text else "pending"
 
-        # state_status isn't stored yet — default to "unknown"
-        state_status = getattr(terraform_plan, "state_status", "unknown")
-
         logger.info(
             "Broadcasting plan update run_id=%s job_id=%s status=%s",
             terraform_plan.run_id,
@@ -172,7 +169,7 @@ class TerraformPlanViewSet(viewsets.ModelViewSet):
             run_id=terraform_plan.run_id,
             job_id=terraform_plan.job_id,
             plan_status=plan_status,
-            state_status=state_status,
+            plan_output=terraform_plan.plan_text,
         )
 
         serializer = self.get_serializer(terraform_plan)

@@ -21,11 +21,35 @@ logger = logging.getLogger(__name__)
 
 
 # -------------------- #
-#  InfraOutput CRUD
+#  InfraOutput Create
 # -------------------- #
 class InfraOutputViewSet(viewsets.ModelViewSet):
     queryset = InfraOutput.objects.all()
     serializer_class = InfraOutputSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        job_id = serializer.validated_data["job_id"]
+        key = serializer.validated_data["key"]
+        value = serializer.validated_data["value"]
+
+        obj, _created = InfraOutput.objects.update_or_create(
+            job_id=job_id,
+            key=key,
+            defaults={"value": value},
+        )
+
+        broadcast_job_update(
+            run_id=run_id,
+            state_status="ready",
+            state_output=value,
+            output_key=key,   
+        )
+
+        # Return 201 for both create + update (fine for your Ansible expectation)
+        return Response(self.get_serializer(obj).data, status=status.HTTP_201_CREATED)   
 
 
 # -------------------- #
@@ -91,7 +115,7 @@ class configure(APIView):
             # 8️⃣ Return response to frontend
             return Response(
                 {
-                    "success": "Build successfully raised!",
+                    "success": "Build successfully raised, you legend!",
                     "run_id": run_id_from_awx,
                     "job_id": awx_job_id,
                     "awx_response": awx_data,

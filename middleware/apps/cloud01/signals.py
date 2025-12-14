@@ -9,31 +9,32 @@ channel_layer = get_channel_layer()
 
 @receiver(post_save, sender=TerraformPlan)
 def broadcast_plan_update(sender, instance, **kwargs):
-    data = {
-        "type": "plan_update",
-        "id": instance.job_id,
-        "plan_status": getattr(instance, "plan_status", "unknown"),
-        "plan_output": instance.plan_text or "",
+    event = {
+        "event": "plan_update",
+        "run_id": str(instance.run_id),      
+        "job_id": str(instance.job_id),      
     }
+
+    if instance.plan_text:
+        event["plan_output"] = instance.plan_text
+        event["plan_status"] = "ready"
+
     async_to_sync(channel_layer.group_send)(
-        "plan_updates",  # matches your consumers.py group
-        {
-            "type": "plan_update",  # must match method name in consumer
-            **data,
-        }
+        "plan_updates",
+        {"type": "plan_update", **event},
     )
 
 @receiver(post_save, sender=InfraOutput)
 def broadcast_state_update(sender, instance, **kwargs):
-    data = {
-        "type": "state_update",
-        "id": instance.job_id,        
+    event = {
+        "event": "state_update",       
+        "run_id": instance.job_id,      
         "key": instance.key,
-        "state_status": "ready",      
+        "state_status": "ready",
         "state_output": instance.value or {},
     }
+
     async_to_sync(channel_layer.group_send)(
         "plan_updates",
-        {"type": "state_update", **data},
+        {"type": "plan_update", **event},   
     )
-

@@ -7,7 +7,7 @@ from .models import TerraformPlan
 class InfraOutputSerializer(serializers.ModelSerializer):
     class Meta:
         model = InfraOutput
-        fields = ["key", "id", "value", "updated_at"]
+        fields = ["key", "job_id", "value", "updated_at"]
 
 class TerraformPlanSerializer(serializers.ModelSerializer):
     class Meta:

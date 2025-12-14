@@ -17,7 +17,6 @@ class AWX:
         self.session.verify = False
 
     def launch_build(self, net_vars):
-        # for testing sending data to test workflow
         URL_FULL = self.url + f"workflow_job_templates/15/launch/"
         return self.session.post(url=URL_FULL, json=net_vars, verify=False)
 

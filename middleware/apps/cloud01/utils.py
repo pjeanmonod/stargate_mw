@@ -11,19 +11,18 @@ def save_terraform_plan(run_id, plan_output):
     obj.save()
 
 
-def broadcast_job_update(run_id, job_id, plan_status, state_status):
+def broadcast_job_update(**kwargs):
+    payload = {k: v for k, v in kwargs.items() if v is not None}
+
     """
     Broadcast a job update to all connected websocket clients.
     """
     channel_layer = get_channel_layer()
 
+    if "run_id" not in payload:
+        raise ValueError("broadcast_job_update requires run_id")
+
     async_to_sync(channel_layer.group_send)(
         "plan_updates",
-        {
-            "type": "plan_update",  # consumer method name
-            "run_id": run_id,
-            "job_id": job_id,
-            "plan_status": plan_status,
-            "state_status": state_status,
-        }
+        {"type": "plan_update", **payload},
     )

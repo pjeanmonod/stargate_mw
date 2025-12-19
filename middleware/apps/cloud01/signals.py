@@ -32,6 +32,7 @@ def broadcast_state_update(sender, instance, **kwargs):
         "key": instance.key,
         "state_status": "ready",
         "state_output": instance.value or {},
+        "state_updated_at": instance.updated_at.isoformat(), 
     }
 
     async_to_sync(channel_layer.group_send)(

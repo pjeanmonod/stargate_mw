@@ -15,6 +15,7 @@ from middleware.apps.cloud01.utils import broadcast_job_update
 from .awx import AWX
 from .input_handler import format_awx_request
 import logging
+from django.db.models import Max
 
 logger = logging.getLogger(__name__)
 

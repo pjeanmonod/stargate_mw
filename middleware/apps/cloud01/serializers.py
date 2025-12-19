@@ -32,7 +32,7 @@ class JobStatusSerializer(serializers.ModelSerializer):
         return "ready" if obj.plan_text else "pending"
 
     def get_state_status(self, obj):
-        # you can improve this later; for now:
+        # works for now
         return None
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):

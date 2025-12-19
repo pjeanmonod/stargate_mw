@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.decorators import action
 import json
-import traceback
 from pprint import pprint
 import uuid
 from rest_framework.decorators import api_view
@@ -315,6 +314,25 @@ def destroy_all_infra(request, run_id):
 class JobListView(APIView):
     def get(self, request):
         jobs = TerraformPlan.objects.all().order_by("-created_at")
-        serializer = JobStatusSerializer(jobs, many=True)
-        return Response(serializer.data)
+
+        # 1) Build { job_id(run_id UUID stored in InfraOutput.job_id) : latest_updated_at }
+        state_time_rows = (
+            InfraOutput.objects
+            .values("job_id")
+            .annotate(state_updated_at=Max("updated_at"))
+        )
+        state_time_map = {
+            row["job_id"]: row["state_updated_at"]
+            for row in state_time_rows
+        }
+
+        # 2) Serialize jobs
+        data = JobStatusSerializer(jobs, many=True).data
+
+        # 3) Inject state_updated_at per job using run_id (your UUID)
+        for row in data:
+            run_id = row.get("run_id")
+            row["state_updated_at"] = state_time_map.get(run_id)
+
+        return Response(data)
 

@@ -1,16 +1,18 @@
 from django.db import models
-
+    
 class BuildRequest(models.Model):
     request_id = models.AutoField(primary_key=True)
+    run_id = models.CharField(max_length=255, unique=True, db_index=True)  
+    requested_build_types = models.JSONField(default=list, blank=True)    
+
     job_data = models.JSONField()
     master_ticket = models.CharField(blank=True, max_length=50)
 
     class Meta:
-        app_label = 'cloud01'  # explicitly assign the app label
+        app_label = "cloud01"
 
     def __str__(self):
-        return f"BuildRequest {self.request_id}"
-
+        return f"BuildRequest {self.request_id} ({self.run_id})"
 
 from django.db import models
 

@@ -9,7 +9,7 @@ import json
 from pprint import pprint
 import uuid
 from rest_framework.decorators import api_view
-from .models import InfraOutput, TerraformPlan
+from .models import InfraOutput, TerraformPlan, BuildRequest
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer, JobStatusSerializer
 from middleware.apps.cloud01.utils import broadcast_job_update
 from .awx import AWX
@@ -71,30 +71,40 @@ class configure(APIView):
 
     def post(self, request, format=None):
         try:
-            # 1️⃣ Generate UUID for run_id
+            # Generate UUID for run_id
             run_id = str(uuid.uuid4())
 
-            # 2️⃣ Format payload for AWX
+            # Persist user intent (build types) at submit time
+            BuildRequest.objects.update_or_create(
+                run_id=run_id,
+                defaults={
+                    "requested_build_types": request.data.get("buildTypes", []),
+                    "job_data": dict(request.data),  # ensure JSON serializable
+                    "master_ticket": request.data.get("master_ticket", ""),
+                },
+            )
+
+            # Format payload for AWX
             job_vars = format_awx_request(request.data)
             job_vars["run_id"] = run_id
             awx_request = {"extra_vars": job_vars}
 
-            # 3️⃣ Launch AWX workflow
+            # Launch AWX workflow
             awx = AWX()
             response = awx.launch_build(awx_request)
 
-            # 4️⃣ Ensure we have a dict
+            # Ensure we have a dict
             if hasattr(response, "json"):
                 awx_data = response.json()
             else:
                 awx_data = response
 
-            # 5️⃣ Extract AWX job ID
+            # Extract AWX job ID
             awx_job_id = awx_data.get("id") or awx_data.get("workflow_job")
             if not awx_job_id:
                 raise ValueError("AWX did not return a workflow/job ID")
 
-            # 6️⃣ Extract run_id from extra_vars (JSON string)
+            # Extract run_id from extra_vars (JSON string)
             extra_vars_str = awx_data.get("extra_vars", "{}")
             try:
                 extra_vars = json.loads(extra_vars_str)
@@ -102,7 +112,7 @@ class configure(APIView):
             except Exception:
                 run_id_from_awx = run_id
 
-            # 7️⃣ Save to DB correctly
+            # Save to DB 
             TerraformPlan.objects.update_or_create(
                 run_id=run_id_from_awx,
                 defaults={
@@ -111,7 +121,7 @@ class configure(APIView):
                 },
             )
 
-            # 8️⃣ Return response to frontend
+            # Return response to frontend
             return Response(
                 {
                     "success": "Build successfully raised, you legend!",
@@ -316,7 +326,7 @@ class JobListView(APIView):
     def get(self, request):
         jobs = TerraformPlan.objects.all().order_by("-created_at")
 
-        # 1) Build { job_id(run_id UUID stored in InfraOutput.job_id) : latest_updated_at }
+        # Build { job_id(run_id UUID stored in InfraOutput.job_id) : latest_updated_at }
         state_time_rows = (
             InfraOutput.objects
             .values("job_id")
@@ -327,13 +337,22 @@ class JobListView(APIView):
             for row in state_time_rows
         }
 
-        # 2) Serialize jobs
+        # Build { run_id : requested_build_types }
+        build_type_rows = BuildRequest.objects.values("run_id", "requested_build_types")
+        build_type_map = {
+            row["run_id"]: row["requested_build_types"]
+            for row in build_type_rows
+        }
+
+        # Serialize jobs
         data = JobStatusSerializer(jobs, many=True).data
 
-        # 3) Inject state_updated_at per job using run_id (your UUID)
+        # Inject state_updated_at + requested_build_types per job using run_id (UUID)
         for row in data:
             run_id = row.get("run_id")
             row["state_updated_at"] = state_time_map.get(run_id)
+            row["requested_build_types"] = build_type_map.get(run_id, [])
 
         return Response(data)
+
 

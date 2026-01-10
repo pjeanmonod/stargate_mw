@@ -4,9 +4,14 @@ class BuildRequest(models.Model):
     request_id = models.AutoField(primary_key=True)
     run_id = models.CharField(max_length=255, unique=True, db_index=True)  
     requested_build_types = models.JSONField(default=list, blank=True)    
-
     job_data = models.JSONField()
     master_ticket = models.CharField(blank=True, max_length=50)
+
+    plan_approval_sent_at = models.DateTimeField(null=True, blank=True)
+    plan_approval_awx_job_id = models.CharField(max_length=100, null=True, blank=True)
+
+    destroy_sent_at = models.DateTimeField(null=True, blank=True)
+    destroy_awx_job_id = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         app_label = "cloud01"

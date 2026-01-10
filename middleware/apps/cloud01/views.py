@@ -4,18 +4,17 @@ from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.decorators import action
 import json
 from pprint import pprint
 import uuid
-from rest_framework.decorators import api_view
 from .models import InfraOutput, TerraformPlan, BuildRequest
 from .serializers import InfraOutputSerializer, CustomTokenObtainPairSerializer, TerraformPlanSerializer, JobStatusSerializer
 from middleware.apps.cloud01.utils import broadcast_job_update
 from .awx import AWX
 from .input_handler import format_awx_request
 import logging
-from django.db.models import Max
+from django.db.models import Max, Count
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +242,12 @@ def approve_terraform_plan(request, run_id):
                 },
                 status=response.status_code,
             )
+        
+        # Approval succeeded → persist marker
+        BuildRequest.objects.filter(run_id=run_id).update(
+            plan_approval_sent_at=timezone.now(),
+            plan_approval_awx_job_id=str(plan.job_id),
+        )
 
         # 🔹 Broadcast "approved" to the websocket clients
         broadcast_job_update(
@@ -277,8 +282,6 @@ def approve_terraform_plan(request, run_id):
 def destroy_all_infra(request, run_id):
     logger.info(f"destroy_all_infra called with run_id={run_id}")  # for testing and then can be removed
     try:
-        # Delete all infra outputs
-        InfraOutput.objects.all().delete()
 
         # Lookup Terraform plan
         plan = TerraformPlan.objects.filter(run_id=run_id).first()
@@ -304,6 +307,20 @@ def destroy_all_infra(request, run_id):
                 {"error": f"Failed to approve destroy workflow: {response.status_code}", "details": response.text},
                 status=response.status_code
             )
+        # Delete terraform outputs in DB
+        InfraOutput.objects.filter(job_id=run_id).delete()
+
+        # Persist "destroy sent" BEFORE returning
+        BuildRequest.objects.filter(run_id=run_id).update(
+            destroy_sent_at=timezone.now(),
+            destroy_awx_job_id=str(plan.job_id),
+        )
+
+        broadcast_job_update(
+            run_id=run_id,
+            job_id=plan.job_id,
+            state_status="destroy_requested",
+        )
 
         # Return success
         return JsonResponse({
@@ -326,32 +343,68 @@ class JobListView(APIView):
     def get(self, request):
         jobs = TerraformPlan.objects.all().order_by("-created_at")
 
-        # Build { job_id(run_id UUID stored in InfraOutput.job_id) : latest_updated_at }
+        # 1) Latest output update time per run_id
         state_time_rows = (
             InfraOutput.objects
             .values("job_id")
-            .annotate(state_updated_at=Max("updated_at"))
+            .annotate(state_updated_at=Max("updated_at"), output_count=Count("id"))
         )
-        state_time_map = {
-            row["job_id"]: row["state_updated_at"]
+        state_map = {
+            row["job_id"]: {
+                "state_updated_at": row["state_updated_at"],
+                "outputs_exist": row["output_count"] > 0,
+            }
             for row in state_time_rows
         }
 
-        # Build { run_id : requested_build_types }
-        build_type_rows = BuildRequest.objects.values("run_id", "requested_build_types")
-        build_type_map = {
-            row["run_id"]: row["requested_build_types"]
-            for row in build_type_rows
-        }
+        # 2) BuildRequest metadata per run_id (includes new markers)
+        br_rows = (
+            BuildRequest.objects
+            .values(
+                "run_id",
+                "requested_build_types",
+                "plan_approval_sent_at",
+                "destroy_sent_at",
+            )
+        )
+        br_map = {row["run_id"]: row for row in br_rows}
 
-        # Serialize jobs
+        # 3) Base serialize from TerraformPlan
         data = JobStatusSerializer(jobs, many=True).data
 
-        # Inject state_updated_at + requested_build_types per job using run_id (UUID)
+        # 4) Inject computed statuses
         for row in data:
             run_id = row.get("run_id")
-            row["state_updated_at"] = state_time_map.get(run_id)
-            row["requested_build_types"] = build_type_map.get(run_id, [])
+
+            # from InfraOutput aggregation
+            st = state_map.get(run_id, {})
+            row["state_updated_at"] = st.get("state_updated_at")
+            outputs_exist = bool(st.get("outputs_exist"))
+
+            # from BuildRequest
+            br = br_map.get(run_id, {})
+            row["requested_build_types"] = br.get("requested_build_types", [])
+            approved = br.get("plan_approval_sent_at") is not None
+            destroy_requested = br.get("destroy_sent_at") is not None
+
+            # plan_status
+            # If you want "ready" only when plan_text exists, use row.get("plan_text")
+            # Otherwise, plan row existing is enough.
+            plan_exists = True  # because row is from TerraformPlan; adjust if needed
+            if approved:
+                row["plan_status"] = "approved"
+            else:
+                row["plan_status"] = "ready" if plan_exists else "none"
+
+            # state_status
+            if outputs_exist:
+                row["state_status"] = "ready"
+            else:
+                row["state_status"] = "destroy_requested" if destroy_requested else "none"
+
+            # Optional: expose markers for UI tooltips
+            row["plan_approval_sent_at"] = br.get("plan_approval_sent_at")
+            row["destroy_sent_at"] = br.get("destroy_sent_at")
 
         return Response(data)
 

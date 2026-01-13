@@ -339,14 +339,19 @@ def destroy_all_infra(request, run_id):
 #  Job Status Page List view #
 # ------------------------- #
 
+from collections import defaultdict
+
 class JobListView(APIView):
     def get(self, request):
         jobs_qs = TerraformPlan.objects.all().order_by("-created_at")
 
-        # Build map from a separate, cheap query (avoids queryset re-use quirks)
-        plan_text_map = dict(
-            TerraformPlan.objects.values_list("run_id", "plan_text")
-        )
+        plan_text_map = dict(TerraformPlan.objects.values_list("run_id", "plan_text"))
+
+        # ✅ build state outputs (persisted)
+        outputs_rows = InfraOutput.objects.values("job_id", "key", "value")
+        outputs_map = defaultdict(dict)
+        for r in outputs_rows:
+            outputs_map[r["job_id"]][r["key"]] = r["value"]
 
         state_time_rows = (
             InfraOutput.objects
@@ -376,6 +381,9 @@ class JobListView(APIView):
             row["state_updated_at"] = st.get("state_updated_at")
             outputs_exist = bool(st.get("outputs_exist"))
 
+            # ✅ attach state outputs so modal can show it after refresh
+            row["state_outputs"] = outputs_map.get(run_id, {})
+
             br = br_map.get(run_id, {})
             row["requested_build_types"] = br.get("requested_build_types", [])
             approved = br.get("plan_approval_sent_at") is not None
@@ -383,22 +391,12 @@ class JobListView(APIView):
 
             plan_text = plan_text_map.get(run_id, "").strip()
 
-            if approved:
-                row["plan_status"] = "approved"
-            else:
-                row["plan_status"] = "ready" if plan_text else "pending"
+            row["plan_status"] = "approved" if approved else ("ready" if plan_text else "pending")
 
-            # ✅ STATE STATUS
-            if outputs_exist:
-                row["state_status"] = "ready"
-            else:
-                row["state_status"] = "destroy_requested" if destroy_requested else "none"
-
-            # Optional: expose markers if FE wants them
-            row["plan_approval_sent_at"] = br.get("plan_approval_sent_at")
-            row["destroy_sent_at"] = br.get("destroy_sent_at")
+            row["state_status"] = "ready" if outputs_exist else ("destroy_requested" if destroy_requested else "none")
 
         return Response(data)
+
 
 
 

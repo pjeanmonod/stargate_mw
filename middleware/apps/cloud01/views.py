@@ -341,9 +341,13 @@ def destroy_all_infra(request, run_id):
 
 class JobListView(APIView):
     def get(self, request):
-        jobs = TerraformPlan.objects.all().order_by("-created_at")
+        jobs_qs = TerraformPlan.objects.all().order_by("-created_at")
 
-        # 1) Latest output update time per run_id
+        # Build map from a separate, cheap query (avoids queryset re-use quirks)
+        plan_text_map = dict(
+            TerraformPlan.objects.values_list("run_id", "plan_text")
+        )
+
         state_time_rows = (
             InfraOutput.objects
             .values("job_id")
@@ -357,55 +361,49 @@ class JobListView(APIView):
             for row in state_time_rows
         }
 
-        # 2) BuildRequest metadata per run_id (includes new markers)
         br_rows = (
             BuildRequest.objects
-            .values(
-                "run_id",
-                "requested_build_types",
-                "plan_approval_sent_at",
-                "destroy_sent_at",
-            )
+            .values("run_id", "requested_build_types", "plan_approval_sent_at", "destroy_sent_at")
         )
         br_map = {row["run_id"]: row for row in br_rows}
 
-        # 3) Base serialize from TerraformPlan
-        data = JobStatusSerializer(jobs, many=True).data
+        data = JobStatusSerializer(jobs_qs, many=True).data
 
-        # 4) Inject computed statuses
         for row in data:
             run_id = row.get("run_id")
 
-            # from InfraOutput aggregation
             st = state_map.get(run_id, {})
             row["state_updated_at"] = st.get("state_updated_at")
             outputs_exist = bool(st.get("outputs_exist"))
 
-            # from BuildRequest
             br = br_map.get(run_id, {})
             row["requested_build_types"] = br.get("requested_build_types", [])
             approved = br.get("plan_approval_sent_at") is not None
             destroy_requested = br.get("destroy_sent_at") is not None
 
-            # plan_status
-            # If you want "ready" only when plan_text exists, use row.get("plan_text")
-            # Otherwise, plan row existing is enough.
-            plan_exists = True  # because row is from TerraformPlan; adjust if needed
+            plan_text = plan_text_map.get(run_id, "").strip()
+
             if approved:
                 row["plan_status"] = "approved"
             else:
-                row["plan_status"] = "ready" if plan_exists else "none"
+                row["plan_status"] = "ready" if plan_text else "pending"
 
-            # state_status
+            # ✅ STATE STATUS
             if outputs_exist:
                 row["state_status"] = "ready"
             else:
                 row["state_status"] = "destroy_requested" if destroy_requested else "none"
 
-            # Optional: expose markers for UI tooltips
+            # Optional: expose markers if FE wants them
             row["plan_approval_sent_at"] = br.get("plan_approval_sent_at")
             row["destroy_sent_at"] = br.get("destroy_sent_at")
 
         return Response(data)
+
+
+
+
+
+
 
 

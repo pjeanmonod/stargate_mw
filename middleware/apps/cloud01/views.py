@@ -347,7 +347,7 @@ class JobListView(APIView):
 
         plan_text_map = dict(TerraformPlan.objects.values_list("run_id", "plan_text"))
 
-        # ✅ build state outputs (persisted)
+        # build state outputs (persisted)
         outputs_rows = InfraOutput.objects.values("job_id", "key", "value")
         outputs_map = defaultdict(dict)
         for r in outputs_rows:
@@ -381,7 +381,7 @@ class JobListView(APIView):
             row["state_updated_at"] = st.get("state_updated_at")
             outputs_exist = bool(st.get("outputs_exist"))
 
-            # ✅ attach state outputs so modal can show it after refresh
+            # attach state outputs so modal can show it after refresh
             row["state_outputs"] = outputs_map.get(run_id, {})
 
             br = br_map.get(run_id, {})
@@ -393,7 +393,9 @@ class JobListView(APIView):
 
             row["plan_status"] = "approved" if approved else ("ready" if plan_text else "pending")
 
-            row["state_status"] = "ready" if outputs_exist else ("destroy_requested" if destroy_requested else "none")
+            row["state_status"] = "ready" if outputs_exist else "none"
+            row["destroy_requested"] = destroy_requested
+
 
         return Response(data)
 
